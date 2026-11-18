@@ -45,7 +45,8 @@ class SSORedirectMiddleware:
     def _view_name(request):
         """Name der View, auf die Django die Anfrage verteilt (path_info, ohne SCRIPT_NAME)."""
         try:
-            return resolve(request.path_info).view_name
+            # request.urlconf: falls eine frühere Middleware eine eigene URL-Konfiguration setzt.
+            return resolve(request.path_info, urlconf=getattr(request, "urlconf", None)).view_name
         except Resolver404:
             return None
 
