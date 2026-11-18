@@ -10,17 +10,26 @@
 <body>
   <main>
     <h1>Anmeldung</h1>
+    {% if messages %}
+    <ul>
+      {% for message in messages %}<li>{{ message }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% if autostart %}
     <p>Die Anmeldung über Single Sign-On wird gestartet …</p>
-    <form id="sso-redirect-form" method="post" action="{{ begin_url }}">
+    {% endif %}
+    <form id="sso-redirect-form" method="post" action="{{ begin_url }}" data-autostart="{{ autostart|yesno:'true,false' }}">
       {% csrf_token %}
       <input type="hidden" name="next" value="{{ next_url }}">
       <button type="submit">Mit SSO anmelden</button>
     </form>
     <p id="sso-redirect-error" role="alert" hidden>
       Die SSO-Anmeldung konnte nicht gestartet werden. Bitte nutzen Sie den Knopf
-      „Mit SSO anmelden“ oder die lokale Anmeldung.
+      „Mit SSO anmelden“{% if local_url %} oder die lokale Anmeldung{% endif %}.
     </p>
+    {% if local_url %}
     <p><a href="{{ local_url }}">Lokale Anmeldung</a></p>
+    {% endif %}
   </main>
 </body>
 </html>

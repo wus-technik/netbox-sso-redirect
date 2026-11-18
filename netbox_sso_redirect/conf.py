@@ -51,3 +51,18 @@ def validate_settings(backend, local_param, authentication_backends):
                 "social-auth-Backend konfiguriert."
             )
     return errors
+
+
+def get_local_login():
+    """Liefert (erlaubt, fehler) für den lokalen Login mit Passwort.
+
+    Nur das Bool True erlaubt ihn. Jeder andere Wert sperrt, auch ein Tippfehler wie der
+    String "true": Die Sperre ist eine Sicherheitsgrenze und fällt deshalb nicht offen aus.
+    """
+    value = get_plugin_config(PLUGIN_NAME, "local_login", True)
+    if isinstance(value, bool):
+        return value, None
+    return False, (
+        f"Die Einstellung 'local_login' muss True oder False sein, nicht {value!r}; "
+        "der lokale Login bleibt gesperrt."
+    )

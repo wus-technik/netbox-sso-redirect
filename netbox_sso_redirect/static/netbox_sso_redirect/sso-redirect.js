@@ -76,8 +76,11 @@
       attempt();
     });
 
-    // Automatischer Start einmalig; Wiederholung nur per Klick.
-    attempt();
+    // Automatischer Start einmalig; Wiederholung nur per Klick. Nach einem SSO-Fehler
+    // (data-autostart="false") wartet die Seite auf den Klick.
+    if (form.getAttribute("data-autostart") !== "false") {
+      attempt();
+    }
   }
 
   if (document.readyState === "loading") {

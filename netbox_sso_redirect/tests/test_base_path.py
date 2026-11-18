@@ -1,7 +1,8 @@
 from unittest import skipUnless
 
 from django.conf import settings
-from django.test import TestCase
+from django.test import Client, TestCase, override_settings
+from users.models import User
 
 BRIDGE = "netbox_sso_redirect/bridge.html"
 
@@ -18,3 +19,21 @@ class BasePathTest(TestCase):
 
     def test_local_with_prefix(self):
         self.assertTemplateUsed(self.client.get("/netbox/login/?local=1"), "login.html")
+
+    def test_block_with_prefix(self):
+        User.objects.create_user(username="u", password="u-pass-123")
+        cfg = {"netbox_sso_redirect": {"local_login": False}}
+        with override_settings(PLUGINS_CONFIG=cfg):
+            client = Client()
+            with self.assertLogs("netbox_sso_redirect", "WARNING"):
+                self.assertEqual(
+                    client.post("/netbox/login/", {"username": "u", "password": "u-pass-123"}).status_code,
+                    403,
+                )
+            with self.assertLogs("netbox_sso_redirect", "WARNING"):
+                r = client.post(
+                    "/netbox/api/users/tokens/provision/",
+                    {"username": "u", "password": "u-pass-123"},
+                    content_type="application/json",
+                )
+            self.assertEqual(r.status_code, 403)

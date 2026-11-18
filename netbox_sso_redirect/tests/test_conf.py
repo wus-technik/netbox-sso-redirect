@@ -1,7 +1,7 @@
 import social_core.backends.utils
 from django.test import TestCase, override_settings
 
-from netbox_sso_redirect.conf import get_settings, validate_settings
+from netbox_sso_redirect.conf import get_local_login, get_settings, validate_settings
 
 OIDC = [
     "social_core.backends.open_id_connect.OpenIdConnectAuth",
@@ -39,3 +39,19 @@ class ConfTest(TestCase):
     @override_settings(PLUGINS_CONFIG={"netbox_sso_redirect": {"backend": "oidc"}})
     def test_get_settings_partial_config(self):
         self.assertEqual(get_settings(), ("oidc", "local"))
+
+    def test_local_login_default_allowed(self):
+        self.assertEqual(get_local_login(), (True, None))
+
+    @override_settings(PLUGINS_CONFIG={"netbox_sso_redirect": {"local_login": False}})
+    def test_local_login_false(self):
+        self.assertEqual(get_local_login(), (False, None))
+
+    def test_local_login_non_bool_blocks(self):
+        for value in ("true", "False", 1, 0, None):
+            with self.subTest(value=value), override_settings(
+                PLUGINS_CONFIG={"netbox_sso_redirect": {"local_login": value}}
+            ):
+                allowed, error = get_local_login()
+                self.assertFalse(allowed)
+                self.assertIn("local_login", error)

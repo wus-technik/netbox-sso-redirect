@@ -1,6 +1,6 @@
 from netbox.plugins import PluginConfig
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
 class NetBoxSSORedirectConfig(PluginConfig):
@@ -15,6 +15,7 @@ class NetBoxSSORedirectConfig(PluginConfig):
     default_settings = {
         "backend": "oidc",
         "local_param": "local",
+        "local_login": True,
     }
     middleware = ["netbox_sso_redirect.middleware.SSORedirectMiddleware"]
 

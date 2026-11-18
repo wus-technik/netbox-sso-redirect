@@ -2,15 +2,17 @@
 
 NetBox-Plugin der W&S Technik: Ein nicht angemeldeter Aufruf startet sofort den SSO-Login
 (OIDC gegen authentik). Das lokale Login-Formular ist nur noch über `/login/?local=1` erreichbar,
-als Notzugang für das lokale Konto `admin`.
+als Notzugang für das lokale Konto `admin`. Mit `local_login = False` ist die Anmeldung mit
+Passwort ganz gesperrt und wird nur im Notfall per Konfiguration wieder freigegeben.
 
 Jira: [ITSYS-422](https://wus-technik.atlassian.net/browse/ITSYS-422) · Eingebunden in das Image
 `wus-technik/docker-netbox-wus` (Stack 712 `netbox`, docker106).
 
 ## Status
 
-Version 0.1.0: Die Umsetzung ist vorhanden und getestet (Middleware, Brückenseite, Prüfung von
-`next` und der Einstellungen). Das Plugin bringt Template und statische Datei (`sso-redirect.js`)
+Version 0.2.0: Die Umsetzung ist vorhanden und getestet (Middleware, Brückenseite, Prüfung von
+`next` und der Einstellungen, Sperre des lokalen Logins). 0.2.0 ergänzt gegenüber 0.1.0 nur die
+Einstellung `local_login`; ihr Standard `True` lässt das Verhalten unverändert. Das Plugin bringt Template und statische Datei (`sso-redirect.js`)
 mit; das Image muss nach der Installation des Plugins `collectstatic` ausführen, sonst fehlt das
 Skript der Brückenseite.
 
@@ -51,16 +53,30 @@ NetBox 4.7 bringt das nicht mit (geprüft am laufenden 4.7.3-Container, 18.11.20
    `settings.LOGIN_REDIRECT_URL` ersetzt. Andere Query-Parameter werden nicht übernommen.
 4. **`/login/?local=1`** rendert die normale NetBox-Login-Seite mit Formular. Das setzt
    `LOGIN_FORM_HIDDEN = False` voraus (Standard).
-5. **POST auf `/login/` bleibt unangetastet**, auch ohne `local=1`. `?local=1` soll nur
-   verhindern, dass man versehentlich auf dem Formular landet; eine Sicherheitsgrenze ist es
-   nicht. Das lokale Konto `admin` braucht deshalb ein starkes Passwort.
+5. **POST auf `/login/`** bleibt bei `local_login = True` unangetastet, auch ohne `local=1`.
+   `?local=1` soll nur verhindern, dass man versehentlich auf dem Formular landet; eine
+   Sicherheitsgrenze ist es nicht. Die Grenze ist `local_login = False` (Punkt 8).
 6. **Nicht betroffen:** API-Zugriffe mit Token, `/oauth/*`, statische Dateien, alles außer
    `LOGIN_URL`.
 7. **Einstellungen** in `PLUGINS_CONFIG['netbox_sso_redirect']`: `backend` (Standard `oidc`),
-   `local_param` (Standard `local`). Sie werden beim Start geprüft: nicht leer, `local_param`
-   nicht `next`, das Backend ist in `AUTHENTICATION_BACKENDS` bzw. `REMOTE_AUTH_BACKEND`
-   eingetragen. Bei ungültiger Konfiguration leitet das Plugin nicht um und schreibt eine
-   Warnung ins Log; der normale Login bleibt erreichbar.
+   `local_param` (Standard `local`), `local_login` (Standard `True`). `backend` und
+   `local_param` werden beim Start geprüft: nicht leer, `local_param` nicht `next`, das Backend
+   ist in `AUTHENTICATION_BACKENDS` bzw. `REMOTE_AUTH_BACKEND` eingetragen. Bei ungültiger
+   Konfiguration leitet das Plugin nicht um und schreibt eine Warnung ins Log; der normale
+   Login bleibt erreichbar. Eine gesetzte Sperre (Punkt 8) bleibt davon unberührt.
+8. **`local_login = False` sperrt die Anmeldung mit Passwort.** NetBox prüft Benutzername und
+   Passwort an genau zwei Stellen (geprüft in 4.7.3): `LoginView` auf `LOGIN_URL` und
+   `POST /api/users/tokens/provision/`, das gegen Benutzername und Passwort ein API-Token
+   ausstellt. Die Middleware beantwortet jeden POST auf beide Pfade mit 403 (Text bzw. JSON,
+   Warnung mit Pfad und Client-Adresse im Log), unabhängig von `local=1` und vom
+   Anmeldestatus. `?local=1` zeigt dann kein Formular, sondern die Brückenseite ohne
+   automatischen Start und ohne Link „Lokale Anmeldung“: Dorthin führt auch ein SSO-Fehler
+   (`SOCIAL_AUTH_LOGIN_ERROR_URL`), ein Autostart würde eine Schleife erzeugen. Meldungen von
+   social-auth zeigt die Brückenseite an. Nicht betroffen: SSO, API-Tokens, bestehende
+   Sitzungen. Nur das Bool `True` gibt den Login frei; jeder andere Wert (auch der String
+   `"true"`) sperrt und schreibt eine Warnung, damit ein Tippfehler die Sperre nicht öffnet.
+   **Notfall** (authentik nicht erreichbar): `local_login` auf `True` setzen, NetBox neu
+   starten, über `/login/?local=1` mit dem Notfallkonto anmelden, danach wieder sperren.
 
 Im Image, nicht im Plugin (Aufgabe für `docker-netbox-wus`):
 
@@ -68,6 +84,11 @@ Im Image, nicht im Plugin (Aufgabe für `docker-netbox-wus`):
   `BASE_PATH`). NetBox setzt den Wert standardmäßig auf `LOGIN_URL`; die Konfiguration wird
   danach geladen und überschreibt ihn.
 - **`LOGIN_FORM_HIDDEN`** bleibt `False`, sonst zeigt auch `?local=1` kein Formular.
+- **`local_login`** kommt aus einer Umgebungsvariable des Stacks (Standard: gesperrt), damit der
+  Notzugang ohne neues Image freigeschaltet werden kann. Der Wert wird in `plugins.py` explizit
+  in ein Bool übersetzt.
+- **Konten mit Passwort:** Nur das Notfallkonto behält ein nutzbares Passwort; per SSO
+  angelegte Konten haben keins.
 - **Abmelden:** NetBox leitet nach dem Logout nur auf `LOGOUT_REDIRECT_URL` um und baut keinen
   OIDC-Logout. Der Wert zeigt auf die End-Session-URL von authentik; die Seite danach darf nicht
   `/login/` ohne `local=1` sein, sonst startet SSO sofort neu. Ob authentik ohne
@@ -105,11 +126,13 @@ Im Image, nicht im Plugin (Aufgabe für `docker-netbox-wus`):
   Brückenseite und Header nach dem kompletten Middleware-Stack, `next`-Fälle (`//evil`,
   `/\evil`, `%2F%2F`, doppelt kodiert, `http://` unter HTTPS, leer, mehrfach), `local=1` und
   Varianten (`local=0`, `local=`), `BASE_PATH`, API-Token, HTMX-Anfragen, HEAD, angemeldeter
-  Nutzer, ungültige Plugin-Einstellungen. Der Fehlerpfad von authentik und der Logout sind lokal
+  Nutzer, ungültige Plugin-Einstellungen, Sperre des lokalen Logins (Formular-POST und
+  Token-Provisioning mit gültigem Passwort, auch unter `BASE_PATH`; SSO-Start, Token und
+  Sitzung weiter möglich; Wert, der kein Bool ist). Der Fehlerpfad von authentik und der Logout sind lokal
   nicht abgedeckt und stehen als Prüfungen gegen das Staging aus.
 - **Einbindung ins Image:** in `plugin_requirements.txt` auf den **Commit-SHA** gepinnt
   (Tag nur als Kommentar), z. B.
-  `git+https://github.com/wus-technik/netbox-sso-redirect@<sha>  # v0.1.0`. Das Repo ist
+  `git+https://github.com/wus-technik/netbox-sso-redirect@<sha>  # v0.2.0`. Das Repo ist
   privat; der Lesetoken kommt ausschließlich über ein BuildKit-`--secret`-Mount in denselben
   `RUN`-Schritt, nie über `--build-arg` oder die URL, damit er nicht in Layern, Logs oder im
   pip-Cache landet.
