@@ -16,8 +16,7 @@ class NetBoxSSORedirectConfig(PluginConfig):
         "backend": "oidc",
         "local_param": "local",
     }
-    # Middleware folgt (ITSYS-422)
-    middleware = []
+    middleware = ["netbox_sso_redirect.middleware.SSORedirectMiddleware"]
 
 
 config = NetBoxSSORedirectConfig

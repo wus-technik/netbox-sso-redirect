@@ -1,3 +1,8 @@
+import os
+
+# Nur für die Testumgebung. netbox-docker liest BASE_PATH nicht aus der Umgebung; $TEST_BP setzt ihn per -e BASE_PATH=netbox/.
+BASE_PATH = os.environ.get("BASE_PATH", "")
+
 PLUGINS = ["netbox_sso_redirect"]
 PLUGINS_CONFIG = {"netbox_sso_redirect": {"backend": "oidc", "local_param": "local"}}
 REMOTE_AUTH_BACKEND = "social_core.backends.open_id_connect.OpenIdConnectAuth"

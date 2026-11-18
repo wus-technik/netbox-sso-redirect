@@ -27,7 +27,9 @@ NetBox 4.7 bringt das nicht mit (geprüft am laufenden 4.7.3-Container, 18.11.20
    `CsrfViewMiddleware`): Ein **GET** auf `settings.LOGIN_URL` (Vergleich mit `request.path`,
    `BASE_PATH` ist darin enthalten) ohne angemeldeten Nutzer liefert eine Brückenseite, sofern
    der Query-Parameter nicht genau `local=1` ist. Angemeldete Nutzer, HEAD, POST und alle anderen
-   Pfade reicht die Middleware unverändert an NetBox durch.
+   Pfade reicht die Middleware unverändert an NetBox durch. HTMX-Anfragen (Header `HX-Request`)
+   bekommen statt der Brückenseite eine leere Antwort mit `HX-Redirect` auf dieselbe URL, damit
+   der Browser ganz neu navigiert, statt die Seite als Fragment einzusetzen.
 2. **Brückenseite:** Sie enthält ein Formular mit dem CSRF-Token aus `get_token(request)` (das
    Cookie ist `HttpOnly`) und `next` als verstecktem, HTML-escaptem POST-Feld. Ziel ist
    `reverse('social_auth_begin', args=[backend])`, also NetBox' eigener Wrapper, nicht

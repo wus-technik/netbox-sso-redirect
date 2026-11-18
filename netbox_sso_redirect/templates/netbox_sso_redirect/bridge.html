@@ -1,0 +1,26 @@
+{% load static %}<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Anmeldung – NetBox</title>
+  <script src="{% static 'netbox_sso_redirect/sso-redirect.js' %}" defer></script>
+</head>
+<body>
+  <main>
+    <h1>Anmeldung</h1>
+    <p>Die Anmeldung über Single Sign-On wird gestartet …</p>
+    <form id="sso-redirect-form" method="post" action="{{ begin_url }}">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <button type="submit">Mit SSO anmelden</button>
+    </form>
+    <p id="sso-redirect-error" role="alert" hidden>
+      Die SSO-Anmeldung konnte nicht gestartet werden. Bitte nutzen Sie den Knopf
+      „Mit SSO anmelden“ oder die lokale Anmeldung.
+    </p>
+    <p><a href="{{ local_url }}">Lokale Anmeldung</a></p>
+  </main>
+</body>
+</html>
