@@ -7,9 +7,10 @@ from django.conf import settings
 from django.core.exceptions import MiddlewareNotUsed
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import render
-from django.urls import reverse
+from django.urls import Resolver404, resolve, reverse
 from django.utils.cache import add_never_cache_headers
 
+from . import __version__
 from .conf import get_local_login, get_settings, validate_settings
 from .redirects import safe_next
 
@@ -17,6 +18,9 @@ logger = logging.getLogger("netbox_sso_redirect")
 
 TEMPLATE = "netbox_sso_redirect/bridge.html"
 BLOCKED_MESSAGE = "Die lokale Anmeldung ist deaktiviert. Bitte über SSO anmelden."
+# Die Views, an denen NetBox anonym Benutzername und Passwort prüft (4.7.3).
+LOGIN_VIEW = "login"
+PASSWORD_VIEWS = frozenset({LOGIN_VIEW, "users-api:token_provision"})
 
 
 class SSORedirectMiddleware:
@@ -37,12 +41,24 @@ class SSORedirectMiddleware:
         if not self.redirect_enabled and self.local_login:
             raise MiddlewareNotUsed
 
+    @staticmethod
+    def _view_name(request):
+        """Name der View, auf die Django die Anfrage verteilt (path_info, ohne SCRIPT_NAME)."""
+        try:
+            return resolve(request.path_info).view_name
+        except Resolver404:
+            return None
+
     def _blocks_password_login(self, request):
-        """POST auf die beiden Wege, die NetBox Benutzername und Passwort prüfen lässt."""
+        """POST auf eine View, die Benutzername und Passwort prüft.
+
+        Geprüft wird die aufgelöste View, nicht der Pfad: LOGIN_URL ist nur das Ziel der
+        Umleitung, und request.path enthält SCRIPT_NAME, nach dem Django nicht verteilt.
+        """
         return (
             not self.local_login
             and request.method == "POST"
-            and request.path in (settings.LOGIN_URL, reverse("users-api:token_provision"))
+            and self._view_name(request) in PASSWORD_VIEWS
         )
 
     def _shows_bridge(self, request):
@@ -81,6 +97,7 @@ class SSORedirectMiddleware:
             # local=1 ist auch das Ziel nach einem SSO-Fehler (SOCIAL_AUTH_LOGIN_ERROR_URL);
             # ohne lokalen Login darf dort kein Autostart laufen, sonst entsteht eine Schleife.
             "autostart": request.GET.get(self.local_param) != "1",
+            "plugin_version": __version__,
         }
         response = render(request, TEMPLATE, context)
         add_never_cache_headers(response)
@@ -94,7 +111,7 @@ class SSORedirectMiddleware:
             request.path,
             request.META.get("REMOTE_ADDR"),
         )
-        if request.path == settings.LOGIN_URL:
+        if self._view_name(request) == LOGIN_VIEW:
             response = HttpResponseForbidden(BLOCKED_MESSAGE, content_type="text/plain; charset=utf-8")
         else:
             response = JsonResponse({"detail": BLOCKED_MESSAGE}, status=403)

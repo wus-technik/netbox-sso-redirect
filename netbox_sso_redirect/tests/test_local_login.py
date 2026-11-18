@@ -1,3 +1,5 @@
+from unittest import mock
+
 from django.core.exceptions import MiddlewareNotUsed
 from django.http import HttpResponse
 from django.test import Client, TestCase, override_settings
@@ -5,11 +7,14 @@ from django.urls import reverse
 from users.choices import TokenVersionChoices
 from users.models import Token, User
 
+from social_core.backends.open_id_connect import OpenIdConnectAuth
+
 from netbox_sso_redirect.middleware import SSORedirectMiddleware
 
 BRIDGE = "netbox_sso_redirect/bridge.html"
 OFF = {"netbox_sso_redirect": {"backend": "oidc", "local_param": "local", "local_login": False}}
 CREDS = {"username": "admin", "password": "admin-pass-123"}
+IDP = {"authorization_endpoint": "https://idp.example/authorize"}
 
 
 class LocalLoginBlockedTest(TestCase):
@@ -69,7 +74,16 @@ class LocalLoginBlockedTest(TestCase):
         self.assertContains(r, 'data-autostart="false"')
         self.assertContains(r, 'name="next" value="/dcim/"')
 
-    def test_sso_begin_still_works(self):
+    def test_post_login_under_script_name_forbidden(self):
+        # WSGI-Mount: request.path = /mount/login/, Django verteilt nach path_info /login/.
+        with self.assertLogs("netbox_sso_redirect", "WARNING"):
+            r = self.client.post("/login/", CREDS, SCRIPT_NAME="/mount")
+        self.assertEqual(r.status_code, 403)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    # oidc_config ist per @cache dekoriert, daher return_value statt Funktionsersatz.
+    @mock.patch.object(OpenIdConnectAuth, "oidc_config", return_value=IDP)
+    def test_sso_begin_still_works(self, _mock):
         r = self.client.get("/login/")
         csrf = r.cookies["csrftoken"].value
         csrf_client = Client(enforce_csrf_checks=True)
@@ -79,7 +93,8 @@ class LocalLoginBlockedTest(TestCase):
             {"csrfmiddlewaretoken": csrf, "next": "/"},
             headers={"Accept": "application/json"},
         )
-        self.assertNotEqual(r.status_code, 403)
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["url"].startswith("https://idp.example/authorize"))
 
     def test_api_token_still_works(self):
         r = self.client.get(

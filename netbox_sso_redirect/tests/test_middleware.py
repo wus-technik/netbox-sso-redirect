@@ -32,6 +32,12 @@ class SSORedirectMiddlewareTest(TestCase):
         self.assertContains(r, 'name="next" value="/dcim/devices/"')
         self.assertContains(r, 'href="/login/?local=1&amp;next=%2Fdcim%2Fdevices%2F"')
 
+    def test_script_url_carries_version(self):
+        from netbox_sso_redirect import __version__
+
+        r = self.client.get("/login/")
+        self.assertContains(r, f"/static/netbox_sso_redirect/sso-redirect.js?v={__version__}")
+
     def test_bridge_headers(self):
         r = self.client.get("/login/")
         self.assertIn("no-store", r["Cache-Control"])

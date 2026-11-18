@@ -13,7 +13,7 @@ class BasePathTest(TestCase):
         r = self.client.get("/netbox/login/")
         self.assertTemplateUsed(r, BRIDGE)
         self.assertContains(r, 'action="/netbox/oauth/begin/oidc/"')
-        self.assertContains(r, "/netbox/static/netbox_sso_redirect/sso-redirect.js")
+        self.assertContains(r, "/netbox/static/netbox_sso_redirect/sso-redirect.js?v=")
         self.assertContains(r, 'href="/netbox/login/?local=1&amp;next=%2Fnetbox%2F"')
         self.assertContains(r, 'name="next" value="/netbox/"')  # Rückfall LOGIN_REDIRECT_URL
 

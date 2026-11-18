@@ -47,7 +47,11 @@ NetBox 4.7 bringt das nicht mit (geprüft am laufenden 4.7.3-Container, 18.11.20
    Grund: Chromium prüft eine CSP `form-action` an jeder Station der Weiterleitungskette, ein
    klassischer Form-POST würde dann still scheitern. Ohne JavaScript bleibt das Formular mit
    Knopf. Das Skript liegt als statische Datei des Plugins vor, nicht inline.
-   Antwort-Header: `Cache-Control: no-store, private`, `X-Frame-Options: DENY`.
+   Antwort-Header: `Cache-Control: no-store, private`, `X-Frame-Options: DENY`. Die Seite erbt
+   wie NetBox' `login.html` von `base/base.html` (Logo, Farbmodus, `BANNER_LOGIN`, Meldungen)
+   und bindet das Skript mit der Plugin-Version in der URL ein (`?v=<version>`), damit nach
+   einem Update kein altes Skript aus dem Browser-Cache läuft. Das Formular trägt bewusst nicht
+   die Klasse `sso-login-form`, sonst würde NetBox' `initSSOForms()` es zusätzlich übernehmen.
 3. **`next` wird geprüft:** `url_has_allowed_host_and_scheme(next, {request.get_host()},
    require_https=request.is_secure())`. Ein ungültiger oder fehlender Wert wird durch
    `settings.LOGIN_REDIRECT_URL` ersetzt. Andere Query-Parameter werden nicht übernommen.
@@ -57,17 +61,18 @@ NetBox 4.7 bringt das nicht mit (geprüft am laufenden 4.7.3-Container, 18.11.20
    `?local=1` soll nur verhindern, dass man versehentlich auf dem Formular landet; eine
    Sicherheitsgrenze ist es nicht. Die Grenze ist `local_login = False` (Punkt 8).
 6. **Nicht betroffen:** API-Zugriffe mit Token, `/oauth/*`, statische Dateien, alles außer
-   `LOGIN_URL`.
+   `LOGIN_URL`. Ausnahme bei `local_login = False`: `POST /api/users/tokens/provision/` (Punkt 8).
 7. **Einstellungen** in `PLUGINS_CONFIG['netbox_sso_redirect']`: `backend` (Standard `oidc`),
    `local_param` (Standard `local`), `local_login` (Standard `True`). `backend` und
    `local_param` werden beim Start geprüft: nicht leer, `local_param` nicht `next`, das Backend
    ist in `AUTHENTICATION_BACKENDS` bzw. `REMOTE_AUTH_BACKEND` eingetragen. Bei ungültiger
    Konfiguration leitet das Plugin nicht um und schreibt eine Warnung ins Log; der normale
    Login bleibt erreichbar. Eine gesetzte Sperre (Punkt 8) bleibt davon unberührt.
-8. **`local_login = False` sperrt die Anmeldung mit Passwort.** NetBox prüft Benutzername und
-   Passwort an genau zwei Stellen (geprüft in 4.7.3): `LoginView` auf `LOGIN_URL` und
-   `POST /api/users/tokens/provision/`, das gegen Benutzername und Passwort ein API-Token
-   ausstellt. Die Middleware beantwortet jeden POST auf beide Pfade mit 403 (Text bzw. JSON,
+8. **`local_login = False` sperrt die Anmeldung mit Passwort.** In der Standardkonfiguration
+   von NetBox 4.7.3 gibt es zwei anonyme Einstiegspunkte, an denen Benutzername und Passwort
+   geprüft werden: `LoginView` (URL-Name `login`) und `POST /api/users/tokens/provision/`, das
+   gegen Benutzername und Passwort ein API-Token ausstellt. Die Middleware löst den Pfad auf
+   (`resolve(request.path_info)`) und beantwortet jeden POST auf eine dieser Views mit 403 (Text bzw. JSON,
    Warnung mit Pfad und Client-Adresse im Log), unabhängig von `local=1` und vom
    Anmeldestatus. `?local=1` zeigt dann kein Formular, sondern die Brückenseite ohne
    automatischen Start und ohne Link „Lokale Anmeldung“: Dorthin führt auch ein SSO-Fehler
@@ -75,7 +80,8 @@ NetBox 4.7 bringt das nicht mit (geprüft am laufenden 4.7.3-Container, 18.11.20
    social-auth zeigt die Brückenseite an. Nicht betroffen: SSO, API-Tokens, bestehende
    Sitzungen. Nur das Bool `True` gibt den Login frei; jeder andere Wert (auch der String
    `"true"`) sperrt und schreibt eine Warnung, damit ein Tippfehler die Sperre nicht öffnet.
-   **Notfall** (authentik nicht erreichbar): `local_login` auf `True` setzen, NetBox neu
+   Zusätzlich aktivierte Wege mit Passwort (Django-Admin, Basic-Auth, weitere Backends) deckt
+   die Sperre nicht ab. **Notfall** (authentik nicht erreichbar): `local_login` auf `True` setzen, NetBox neu
    starten, über `/login/?local=1` mit dem Notfallkonto anmelden, danach wieder sperren.
 
 Im Image, nicht im Plugin (Aufgabe für `docker-netbox-wus`):
@@ -120,6 +126,9 @@ Im Image, nicht im Plugin (Aufgabe für `docker-netbox-wus`):
   # $TEST_BP
   docker compose -f dev/docker-compose.yml run --rm -e BASE_PATH=netbox/ netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py test netbox_sso_redirect.tests.test_base_path --keepdb -v 2
   ```
+  Für eine Vorschau im Browser: `docker compose -f dev/docker-compose.yml run -d --name sso-preview
+  --service-ports [-e SSO_LOCAL_LOGIN=false] netbox`, danach im Container `manage.py
+  collectstatic --no-input`; die Seite liegt unter `http://localhost:8000/login/`.
 - **Tests:** netbox-docker lokal (Docker Desktop), Image NetBox 4.7.3 per Digest gepinnt, mit
   PostgreSQL und Redis. Das Plugin wird in den Container gemountet; die Tests laufen dort mit
   `manage.py test netbox_sso_redirect` gegen das echte NetBox. Abgedeckt werden mindestens:

@@ -1,35 +1,69 @@
-{% load static %}<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+{# SSO-Brückenseite. Erbt wie NetBox' login.html direkt von base.html (Layout, Farbmodus, Meldungen). #}
+{% extends 'base/base.html' %}
+{% load static %}
+{% load helpers %}
+
+{% block title %}Anmeldung{% endblock %}
+
+{% block head %}
   <meta name="robots" content="noindex, nofollow">
-  <title>Anmeldung – NetBox</title>
-  <script src="{% static 'netbox_sso_redirect/sso-redirect.js' %}" defer></script>
-</head>
-<body>
-  <main>
-    <h1>Anmeldung</h1>
-    {% if messages %}
-    <ul>
-      {% for message in messages %}<li>{{ message }}</li>{% endfor %}
-    </ul>
-    {% endif %}
-    {% if autostart %}
-    <p>Die Anmeldung über Single Sign-On wird gestartet …</p>
-    {% endif %}
-    <form id="sso-redirect-form" method="post" action="{{ begin_url }}" data-autostart="{{ autostart|yesno:'true,false' }}">
-      {% csrf_token %}
-      <input type="hidden" name="next" value="{{ next_url }}">
-      <button type="submit">Mit SSO anmelden</button>
-    </form>
-    <p id="sso-redirect-error" role="alert" hidden>
-      Die SSO-Anmeldung konnte nicht gestartet werden. Bitte nutzen Sie den Knopf
-      „Mit SSO anmelden“{% if local_url %} oder die lokale Anmeldung{% endif %}.
-    </p>
-    {% if local_url %}
-    <p><a href="{{ local_url }}">Lokale Anmeldung</a></p>
-    {% endif %}
-  </main>
-</body>
-</html>
+  {# Version in der URL: nach einem Update darf der Browser kein altes Skript aus dem Cache nehmen. #}
+  <script src="{% static_with_params 'netbox_sso_redirect/sso-redirect.js' v=plugin_version %}" defer></script>
+{% endblock %}
+
+{% block layout %}
+  <div class="page page-center">
+    <div class="container container-tight py-4">
+
+      <div class="text-center mb-4">
+        <img src="{% static 'logo_netbox_dark_teal.svg' %}" alt="NetBox" height="80" class="hide-theme-dark logo">
+        <img src="{% static 'logo_netbox_bright_teal.svg' %}" alt="NetBox" height="80" class="hide-theme-light logo">
+      </div>
+
+      {% if config.BANNER_LOGIN %}
+        <div class="mb-5 text-center">
+          {{ config.BANNER_LOGIN|safe }}
+        </div>
+      {% endif %}
+
+      <div class="card card-md">
+        <div class="card-body">
+          <h2 class="text-center mb-4">Anmelden</h2>
+
+          {% if autostart %}
+            <p id="sso-redirect-status" class="text-center text-secondary mb-4">
+              <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+              Weiterleitung zur SSO-Anmeldung&nbsp;…
+            </p>
+          {% else %}
+            <p class="text-center text-secondary mb-4">
+              Die Anmeldung erfolgt über Single Sign-On.
+            </p>
+          {% endif %}
+
+          <div id="sso-redirect-error" class="alert alert-danger" role="alert" tabindex="-1" hidden>
+            Die SSO-Anmeldung konnte nicht gestartet werden. Bitte erneut versuchen{% if local_url %}
+            oder die lokale Anmeldung nutzen{% endif %}.
+          </div>
+
+          {# Bewusst ohne die Klasse sso-login-form: netbox.js (initSSOForms) soll das Formular nicht übernehmen. #}
+          <form id="sso-redirect-form" method="post" action="{{ begin_url }}" data-autostart="{{ autostart|yesno:'true,false' }}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ next_url }}">
+            <button type="submit" class="btn btn-primary w-100">
+              <i class="mdi mdi-login me-1" aria-hidden="true"></i>
+              Mit SSO anmelden
+            </button>
+          </form>
+        </div>
+
+        {% if local_url %}
+          <div class="card-footer text-center">
+            <a href="{{ local_url }}" class="link-secondary small">Lokale Anmeldung</a>
+          </div>
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+{% endblock layout %}

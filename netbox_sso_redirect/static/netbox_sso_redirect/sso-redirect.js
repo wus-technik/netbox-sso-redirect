@@ -16,13 +16,17 @@
     var pending = false;
 
     function showError() {
+      var status = document.getElementById("sso-redirect-status");
+      if (status) {
+        status.hidden = true;
+      }
       var error = document.getElementById("sso-redirect-error");
       if (error) {
         error.hidden = false;
+        error.focus();
       }
       if (button) {
         button.disabled = false;
-        button.focus();
       }
     }
 
