@@ -7,6 +7,13 @@ als Notzugang für das lokale Konto `admin`.
 Jira: [ITSYS-422](https://wus-technik.atlassian.net/browse/ITSYS-422) · Eingebunden in das Image
 `wus-technik/docker-netbox-wus` (Stack 712 `netbox`, docker106).
 
+## Status
+
+Version 0.1.0: Die Umsetzung ist vorhanden und getestet (Middleware, Brückenseite, Prüfung von
+`next` und der Einstellungen). Das Plugin bringt Template und statische Datei (`sso-redirect.js`)
+mit; das Image muss nach der Installation des Plugins `collectstatic` ausführen, sonst fehlt das
+Skript der Brückenseite.
+
 ## Warum ein Plugin
 
 NetBox 4.7 bringt das nicht mit (geprüft am laufenden 4.7.3-Container, 18.11.2026):

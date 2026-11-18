@@ -16,3 +16,6 @@ version = { attr = "netbox_sso_redirect.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["netbox_sso_redirect*"]
+
+[tool.setuptools.package-data]
+netbox_sso_redirect = ["templates/**/*", "static/**/*"]
