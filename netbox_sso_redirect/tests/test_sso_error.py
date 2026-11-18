@@ -21,7 +21,12 @@ def plugin_cfg(local_login):
 @override_settings(SOCIAL_AUTH_LOGIN_ERROR_URL=ERROR_URL)
 @mock.patch.object(OpenIdConnectAuth, "oidc_config", return_value=IDP)
 class SSOErrorFlowTest(TestCase):
-    """Abbruch bei authentik: Callback mit error=access_denied und gültigem state."""
+    """Abbruch bei authentik: Callback mit error=access_denied.
+
+    social-core wertet error vor dem state aus; der state ist hier nur der Vollständigkeit halber
+    gesetzt. Durchlaufen wird der echte Weg: complete-View, AuthCanceled,
+    SocialAuthExceptionMiddleware, SOCIAL_AUTH_LOGIN_ERROR_URL, Wiederherstellung von next.
+    """
 
     def _cancelled_login(self, client, next_url="/dcim/devices/"):
         bridge = client.get(f"/login/?next={next_url}")
@@ -114,9 +119,23 @@ class PreconnectTest(TestCase):
 
     def test_missing_or_invalid_endpoint(self):
         self.assertIsNone(get_idp_origin("azuread-oauth2"))
-        for value in ("javascript:alert(1)", "/relative", "", None, 42):
+        for value in ("javascript:alert(1)", "/relative", "", None, 42, "https://[idp.example/x", "https://idp.example:99999/"):
             with self.subTest(value=value), override_settings(SOCIAL_AUTH_OIDC_OIDC_ENDPOINT=value):
                 self.assertIsNone(get_idp_origin("oidc"))
+
+    def test_userinfo_not_in_origin(self):
+        with override_settings(SOCIAL_AUTH_OIDC_OIDC_ENDPOINT="https://user:pw@idp.example:8443/x"):
+            self.assertEqual(get_idp_origin("oidc"), "https://idp.example:8443")
+
+    def test_ipv6_origin(self):
+        with override_settings(SOCIAL_AUTH_OIDC_OIDC_ENDPOINT="https://[2001:db8::1]:8443/x"):
+            self.assertEqual(get_idp_origin("oidc"), "https://[2001:db8::1]:8443")
+
+    def test_malformed_endpoint_keeps_bridge(self):
+        with override_settings(SOCIAL_AUTH_OIDC_OIDC_ENDPOINT="https://[idp.example/x"):
+            r = Client().get("/login/")
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, 'rel="preconnect"')
 
     def test_bridge_has_preconnect(self):
         with override_settings(SOCIAL_AUTH_OIDC_OIDC_ENDPOINT="https://sso.example.com/application/o/netbox/"):

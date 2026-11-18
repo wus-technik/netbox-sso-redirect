@@ -20,6 +20,14 @@ class BasePathTest(TestCase):
     def test_local_with_prefix(self):
         self.assertTemplateUsed(self.client.get("/netbox/login/?local=1"), "login.html")
 
+    def test_restore_next_with_prefix(self):
+        session = self.client.session
+        session["next"] = "/netbox/dcim/"
+        session.save()
+        r = self.client.get("/netbox/login/?local=1")
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r["Location"], "/netbox/login/?local=1&next=%2Fnetbox%2Fdcim%2F")
+
     def test_block_with_prefix(self):
         User.objects.create_user(username="u", password="u-pass-123")
         cfg = {"netbox_sso_redirect": {"local_login": False}}

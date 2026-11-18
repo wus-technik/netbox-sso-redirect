@@ -91,14 +91,18 @@ NetBox 4.7 bringt das nicht mit (geprüft am laufenden 4.7.3-Container, 18.11.20
      `LOGIN_URL?local=1` ohne `next` wird deshalb einmal auf dieselbe URL mit dem `next` aus der
      Session umgeleitet (302, `no-store`), sofern es die Prüfung aus Punkt 3 besteht. Ein `next` in
      der URL hat Vorrang; HTMX-Anfragen werden nicht umgeleitet. Gilt in beiden Modi von
-     `local_login`; am Image ändert sich nichts.
+     `local_login`; am Image ändert sich nichts. social-core überschreibt `next` in der Session
+     nur, wenn ein Start `next` mitschickt; ein älterer Wert kann also stehen bleiben. Er besteht
+     trotzdem die Prüfung aus Punkt 3, schlimmstenfalls landet man auf einer anderen Seite
+     desselben Hosts.
    - **Eine Meldung.** Nach einem Abbruch bei authentik zeigt NetBox genau einen Toast („Single
      Sign-On ist fehlgeschlagen …“). NetBox' `login.html` enthält zusätzlich den versteckten
      Block `#sso-error` („… kann nicht gestartet werden …“, `d-none`); den liest eine
      Textauslese mit, sichtbar ist er nicht. Bei gesperrtem lokalem Login fehlt er ganz.
    - **Preconnect:** Die Brückenseite setzt `<link rel="preconnect">` und `dns-prefetch` auf den
      Ursprung aus `SOCIAL_AUTH_<BACKEND>_OIDC_ENDPOINT` (für `oidc`:
-     `SOCIAL_AUTH_OIDC_OIDC_ENDPOINT`), nur bei `http`/`https`. Fehlt die Einstellung, entfällt er.
+     `SOCIAL_AUTH_OIDC_OIDC_ENDPOINT`), nur bei `http`/`https`, gebaut aus Host und Port (ohne
+     Zugangsdaten). Fehlt die Einstellung oder ist sie ungültig, entfällt er.
    - **Spinner bis zum Seitenwechsel**, auch beim Klick auf den Knopf. Kommt die Seite aus dem
      Back-Forward-Cache zurück (Zurück vom IdP, v. a. iOS Safari), werden Spinner und Knopf
      zurückgesetzt, ohne erneuten Autostart.

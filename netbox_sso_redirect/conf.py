@@ -80,7 +80,15 @@ def get_idp_origin(backend):
     endpoint = getattr(settings, name, "")
     if not isinstance(endpoint, str):
         return None
-    parts = urlsplit(endpoint)
-    if parts.scheme not in ("http", "https") or not parts.netloc:
+    # Ein Tippfehler in der Einstellung darf die Login-Seite nicht mit 500 lahmlegen.
+    try:
+        parts = urlsplit(endpoint)
+        host, port = parts.hostname, parts.port
+    except ValueError:
         return None
-    return f"{parts.scheme}://{parts.netloc}"
+    if parts.scheme not in ("http", "https") or not host:
+        return None
+    # Aus Host und Port gebaut, nicht aus netloc: Zugangsdaten (user:pw@) gehören nicht ins HTML.
+    if ":" in host:
+        host = f"[{host}]"
+    return f"{parts.scheme}://{host}" + (f":{port}" if port is not None else "")
