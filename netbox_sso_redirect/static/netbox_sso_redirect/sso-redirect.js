@@ -7,6 +7,11 @@
       return;
     }
 
+    // Ohne fetch/FormData bleibt das normale Formular mit nativem Submit.
+    if (typeof window.fetch !== "function" || typeof window.FormData !== "function") {
+      return;
+    }
+
     var button = form.querySelector("button");
     var pending = false;
 
@@ -29,12 +34,21 @@
       if (button) {
         button.disabled = true;
       }
-      fetch(form.action, {
-        method: "POST",
-        body: new FormData(form),
-        headers: { Accept: "application/json" },
-        credentials: "same-origin",
-      })
+      var request;
+      try {
+        request = fetch(form.action, {
+          method: "POST",
+          body: new FormData(form),
+          headers: { Accept: "application/json" },
+          credentials: "same-origin",
+        });
+      } catch (err) {
+        // Synchroner Fehler: gleicher Fehlerpfad wie bei asynchronen.
+        pending = false;
+        showError();
+        return;
+      }
+      request
         .then(function (response) {
           if (!response.ok) {
             throw new Error("HTTP " + response.status);

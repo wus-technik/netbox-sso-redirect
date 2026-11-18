@@ -40,7 +40,7 @@ Codex marked all earlier rulings and deferred minors as "keep".
 - Finding 2: addressed.
 - Finding 1: addressed for every async failure path (HTTP error, invalid JSON, missing `url`, network error). No automatic retry.
 - **New, open (important per Codex):** a synchronous throw in `attempt()` leaves the button disabled, and `preventDefault` blocks the native submit. This happens if `fetch` is missing or `new FormData(form)` throws. The "Lokale Anmeldung" link remains.
-  **Status: parked.** Every browser NetBox 4.7 supports has `fetch`/`FormData`, and NetBox's own `initSSOForms()` relies on them. Small follow-up: wrap the synchronous part in `try/catch`, or check for `fetch` before registering the submit handler.
+  **Status: fixed afterwards in this commit.** The script now returns early (no submit handler, no auto-start) when `window.fetch` or `window.FormData` is missing, so the plain form with its native submit keeps working. The synchronous part of `attempt()` (`fetch(...)` and `new FormData(form)`) is wrapped in `try/catch`; a synchronous throw takes the same failure path as an async one (reset flag, re-enable button, show `#sso-redirect-error`, focus button). Still no auto-retry.
 
 ## Manual check (browser, local stack)
 
