@@ -35,7 +35,7 @@ class SafeNextTest(SimpleTestCase):
         self.assertEqual(safe_next(_request("next=//evil.example/")), FALLBACK)
 
     def test_backslash(self):
-        self.assertEqual(safe_next(_request("next=/\evil.example/")), FALLBACK)
+        self.assertEqual(safe_next(_request(r"next=/\evil.example/")), FALLBACK)
 
     def test_encoded_slashes(self):
         self.assertEqual(safe_next(_request("next=%2F%2Fevil.example%2F")), FALLBACK)
