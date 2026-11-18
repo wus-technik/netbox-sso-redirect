@@ -78,6 +78,18 @@ Im Image, nicht im Plugin (Aufgabe für `docker-netbox-wus`):
 
 ## Entwicklung
 
+- **Testumgebung:** `dev/docker-compose.yml` (NetBox-Image `netboxcommunity/netbox:v4.7.3`, Digest
+  `sha256:22cf3c61fc367fb74a5cf6de018e9d7e10a7da8d09a695eab30740793040de08`). Das Plugin wird per
+  `PYTHONPATH=/opt/plugin` eingebunden, nicht installiert. Unter Git Bash auf Windows vor den
+  Befehlen `export MSYS_NO_PATHCONV=1` setzen (sonst wird `/opt/...` umgeschrieben). Der erste
+  Lauf migriert die Datenbank und dauert einige Minuten.
+  ```bash
+  docker compose -f dev/docker-compose.yml up -d postgres redis idp
+  # $TEST
+  docker compose -f dev/docker-compose.yml run --rm netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py test netbox_sso_redirect --keepdb -v 2
+  # $TEST_BP
+  docker compose -f dev/docker-compose.yml run --rm -e BASE_PATH=netbox/ netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py test netbox_sso_redirect.tests.test_base_path --keepdb -v 2
+  ```
 - **Tests:** netbox-docker lokal (Docker Desktop), Image NetBox 4.7.3 per Digest gepinnt, mit
   PostgreSQL und Redis. Das Plugin wird in den Container gemountet; die Tests laufen dort mit
   `manage.py test netbox_sso_redirect` gegen das echte NetBox. Abgedeckt werden mindestens:

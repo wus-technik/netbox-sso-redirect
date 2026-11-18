@@ -1,0 +1,29 @@
+# Test environment for netbox-sso-redirect (dev only, never production)
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: netbox
+      POSTGRES_USER: netbox
+      POSTGRES_PASSWORD: netbox
+  redis:
+    image: valkey/valkey:8-alpine
+  idp:
+    image: python:3.12-alpine
+    command: python -m http.server 9000 -d /srv
+    volumes:
+      - ./idp:/srv:ro
+    ports:
+      - "9000:9000"
+  netbox:
+    # netboxcommunity/netbox:v4.7.3
+    image: netboxcommunity/netbox@sha256:22cf3c61fc367fb74a5cf6de018e9d7e10a7da8d09a695eab30740793040de08
+    env_file: env/netbox.env
+    depends_on: [postgres, redis, idp]
+    environment:
+      PYTHONPATH: /opt/plugin
+    volumes:
+      - ..:/opt/plugin:ro
+      - ./config/plugins.py:/etc/netbox/config/plugins.py:ro
+    ports:
+      - "8000:8080"
