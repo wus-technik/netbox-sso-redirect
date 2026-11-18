@@ -13,20 +13,25 @@
     }
 
     var button = form.querySelector("button");
+    var status = document.getElementById("sso-redirect-status");
+    var error = document.getElementById("sso-redirect-error");
     var pending = false;
 
-    function showError() {
-      var status = document.getElementById("sso-redirect-status");
+    function reset() {
+      pending = false;
       if (status) {
         status.hidden = true;
       }
-      var error = document.getElementById("sso-redirect-error");
+      if (button) {
+        button.disabled = false;
+      }
+    }
+
+    function showError() {
+      reset();
       if (error) {
         error.hidden = false;
         error.focus();
-      }
-      if (button) {
-        button.disabled = false;
       }
     }
 
@@ -37,6 +42,13 @@
       pending = true;
       if (button) {
         button.disabled = true;
+      }
+      // Spinner bis zum Seitenwechsel, auch beim manuellen Versuch.
+      if (status) {
+        status.hidden = false;
+      }
+      if (error) {
+        error.hidden = true;
       }
       var request;
       try {
@@ -78,6 +90,14 @@
     form.addEventListener("submit", function (event) {
       event.preventDefault();
       attempt();
+    });
+
+    // Zurück vom IdP aus dem Back-Forward-Cache (v. a. iOS Safari): Die Seite käme sonst mit
+    // Spinner und gesperrtem Knopf zurück. Kein erneuter Autostart, der Nutzer wollte zurück.
+    window.addEventListener("pageshow", function (event) {
+      if (event.persisted) {
+        reset();
+      }
     });
 
     // Automatischer Start einmalig; Wiederholung nur per Klick. Nach einem SSO-Fehler

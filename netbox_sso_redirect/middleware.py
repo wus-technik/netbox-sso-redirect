@@ -5,14 +5,14 @@ from urllib.parse import urlencode
 
 from django.conf import settings
 from django.core.exceptions import MiddlewareNotUsed
-from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
+from django.http import HttpResponse, HttpResponseForbidden, HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
 from django.urls import Resolver404, resolve, reverse
 from django.utils.cache import add_never_cache_headers
 
 from . import __version__
-from .conf import get_local_login, get_settings, validate_settings
-from .redirects import safe_next
+from .conf import get_idp_origin, get_local_login, get_settings, validate_settings
+from .redirects import safe_next, session_next
 
 logger = logging.getLogger("netbox_sso_redirect")
 
@@ -62,13 +62,38 @@ class SSORedirectMiddleware:
             and self._view_name(request) in PASSWORD_VIEWS
         )
 
-    def _shows_bridge(self, request):
-        if not (
+    def _is_anonymous_login_get(self, request):
+        return (
             self.redirect_enabled
             and request.method == "GET"
             and request.path == settings.LOGIN_URL
             and not request.user.is_authenticated
+        )
+
+    def _restore_next(self, request):
+        """Nach einem SSO-Fehler fehlt next: SOCIAL_AUTH_LOGIN_ERROR_URL ist fest /login/?local=1.
+
+        social-core hat next beim Start in der Session abgelegt; damit wird die Fehlerseite einmal
+        auf dieselbe URL mit next umgeleitet, sodass ein neuer Versuch auf der Zielseite landet.
+        """
+        if not (
+            self._is_anonymous_login_get(request)
+            and request.GET.get(self.local_param) == "1"
+            and "next" not in request.GET
+            and not request.headers.get("HX-Request")
         ):
+            return None
+        next_url = session_next(request)
+        if not next_url:
+            return None
+        query = request.GET.copy()
+        query["next"] = next_url
+        response = HttpResponseRedirect(f"{settings.LOGIN_URL}?{query.urlencode()}")
+        add_never_cache_headers(response)
+        return response
+
+    def _shows_bridge(self, request):
+        if not self._is_anonymous_login_get(request):
             return False
         # Mit gesperrtem lokalem Login gibt es kein Formular mehr, auch nicht mit local=1.
         return not self.local_login or request.GET.get(self.local_param) != "1"
@@ -76,6 +101,9 @@ class SSORedirectMiddleware:
     def __call__(self, request):
         if self._blocks_password_login(request):
             return self._blocked_response(request)
+        restore = self._restore_next(request)
+        if restore is not None:
+            return restore
         if not self._shows_bridge(request):
             return self.get_response(request)
 
@@ -99,6 +127,7 @@ class SSORedirectMiddleware:
             # ohne lokalen Login darf dort kein Autostart laufen, sonst entsteht eine Schleife.
             "autostart": request.GET.get(self.local_param) != "1",
             "plugin_version": __version__,
+            "idp_origin": get_idp_origin(self.backend),
         }
         response = render(request, TEMPLATE, context)
         add_never_cache_headers(response)

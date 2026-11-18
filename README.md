@@ -10,10 +10,12 @@ Jira: [ITSYS-422](https://wus-technik.atlassian.net/browse/ITSYS-422) · Eingebu
 
 ## Status
 
-Version 0.2.0: Die Umsetzung ist vorhanden und getestet (Middleware, Brückenseite, Prüfung von
-`next` und der Einstellungen, Sperre des lokalen Logins). 0.2.0 ergänzt gegenüber 0.1.0 nur die
-Einstellung `local_login`; ihr Standard `True` lässt das Verhalten unverändert. Das Plugin bringt Template und statische Datei (`sso-redirect.js`)
-mit; das Image muss nach der Installation des Plugins `collectstatic` ausführen, sonst fehlt das
+Version 0.3.0: Die Umsetzung ist vorhanden und getestet (Middleware, Brückenseite, Prüfung von
+`next` und der Einstellungen, Sperre des lokalen Logins). 0.2.0 brachte die Einstellung
+`local_login` (Standard `True`, Verhalten wie 0.1.0). 0.3.0 erhält `next` nach einem SSO-Fehler,
+baut die Verbindung zum IdP vorab auf und zeigt den Spinner bis zum Seitenwechsel (Punkt 9);
+neue Einstellungen gibt es nicht. Das Plugin bringt Template und statische Datei
+(`sso-redirect.js`) mit; das Image muss nach der Installation des Plugins `collectstatic` ausführen, sonst fehlt das
 Skript der Brückenseite.
 
 ## Warum ein Plugin
@@ -83,6 +85,25 @@ NetBox 4.7 bringt das nicht mit (geprüft am laufenden 4.7.3-Container, 18.11.20
    Zusätzlich aktivierte Wege mit Passwort (Django-Admin, Basic-Auth, weitere Backends) deckt
    die Sperre nicht ab. **Notfall** (authentik nicht erreichbar): `local_login` auf `True` setzen, NetBox neu
    starten, über `/login/?local=1` mit dem Notfallkonto anmelden, danach wieder sperren.
+9. **Nach einem SSO-Fehler und beim Warten** (seit 0.3.0):
+   - **`next` bleibt erhalten.** social-core legt `next` beim Start in der Session ab, leitet bei
+     einem Fehler aber auf `SOCIAL_AUTH_LOGIN_ERROR_URL` ohne `next` um. Ein anonymer GET auf
+     `LOGIN_URL?local=1` ohne `next` wird deshalb einmal auf dieselbe URL mit dem `next` aus der
+     Session umgeleitet (302, `no-store`), sofern es die Prüfung aus Punkt 3 besteht. Ein `next` in
+     der URL hat Vorrang; HTMX-Anfragen werden nicht umgeleitet. Gilt in beiden Modi von
+     `local_login`; am Image ändert sich nichts.
+   - **Eine Meldung.** Nach einem Abbruch bei authentik zeigt NetBox genau einen Toast („Single
+     Sign-On ist fehlgeschlagen …“). NetBox' `login.html` enthält zusätzlich den versteckten
+     Block `#sso-error` („… kann nicht gestartet werden …“, `d-none`); den liest eine
+     Textauslese mit, sichtbar ist er nicht. Bei gesperrtem lokalem Login fehlt er ganz.
+   - **Preconnect:** Die Brückenseite setzt `<link rel="preconnect">` und `dns-prefetch` auf den
+     Ursprung aus `SOCIAL_AUTH_<BACKEND>_OIDC_ENDPOINT` (für `oidc`:
+     `SOCIAL_AUTH_OIDC_OIDC_ENDPOINT`), nur bei `http`/`https`. Fehlt die Einstellung, entfällt er.
+   - **Spinner bis zum Seitenwechsel**, auch beim Klick auf den Knopf. Kommt die Seite aus dem
+     Back-Forward-Cache zurück (Zurück vom IdP, v. a. iOS Safari), werden Spinner und Knopf
+     zurückgesetzt, ohne erneuten Autostart.
+   - Weiterhin kein Inline-Style und kein Inline-Skript des Plugins (`style-src 'self'` bleibt
+     möglich; die Inline-Skripte von NetBox' `base.html` betreffen `script-src`).
 
 Im Image, nicht im Plugin (Aufgabe für `docker-netbox-wus`):
 

@@ -1,5 +1,8 @@
 """Einstellungen des Plugins lesen und prüfen."""
 
+from urllib.parse import urlsplit
+
+from django.conf import settings
 from netbox.plugins import get_plugin_config
 from social_core.backends.base import BaseAuth
 from social_core.utils import module_member
@@ -66,3 +69,18 @@ def get_local_login():
         f"Die Einstellung 'local_login' muss True oder False sein, nicht {value!r}; "
         "der lokale Login bleibt gesperrt."
     )
+
+
+def get_idp_origin(backend):
+    """Ursprung (Schema + Host) des IdP aus SOCIAL_AUTH_<BACKEND>_OIDC_ENDPOINT, sonst None.
+
+    Dient nur dem Preconnect auf der Brückenseite; ohne passende Einstellung entfällt er.
+    """
+    name = f"SOCIAL_AUTH_{backend.upper().replace('-', '_')}_OIDC_ENDPOINT"
+    endpoint = getattr(settings, name, "")
+    if not isinstance(endpoint, str):
+        return None
+    parts = urlsplit(endpoint)
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        return None
+    return f"{parts.scheme}://{parts.netloc}"

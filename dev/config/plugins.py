@@ -16,3 +16,5 @@ REMOTE_AUTH_BACKEND = "social_core.backends.open_id_connect.OpenIdConnectAuth"
 SOCIAL_AUTH_OIDC_OIDC_ENDPOINT = "http://idp:9000/application/o/netbox"
 SOCIAL_AUTH_OIDC_KEY = "netbox-dev"
 SOCIAL_AUTH_OIDC_SECRET = "netbox-dev"
+# Wie im Image: Nach einem SSO-Fehler auf die Seite ohne Autostart, sonst entsteht eine Schleife.
+SOCIAL_AUTH_LOGIN_ERROR_URL = f"/{BASE_PATH}login/?local=1"
