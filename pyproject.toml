@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netbox-sso-redirect"
+dynamic = ["version"]
+description = "NetBox-Plugin: SSO-Login automatisch starten, lokales Formular nur über /login/?local=1"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "W&S Technik GmbH" }]
+classifiers = ["Framework :: Django", "Programming Language :: Python :: 3"]
+
+[tool.setuptools.dynamic]
+version = { attr = "netbox_sso_redirect.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["netbox_sso_redirect*"]
