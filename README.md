@@ -105,7 +105,8 @@ Im Image, nicht im Plugin (Aufgabe für `docker-netbox-wus`):
   Brückenseite und Header nach dem kompletten Middleware-Stack, `next`-Fälle (`//evil`,
   `/\evil`, `%2F%2F`, doppelt kodiert, `http://` unter HTTPS, leer, mehrfach), `local=1` und
   Varianten (`local=0`, `local=`), `BASE_PATH`, API-Token, HTMX-Anfragen, HEAD, angemeldeter
-  Nutzer, ungültige Plugin-Einstellungen, Fehlerpfad von authentik.
+  Nutzer, ungültige Plugin-Einstellungen. Der Fehlerpfad von authentik und der Logout sind lokal
+  nicht abgedeckt und stehen als Prüfungen gegen das Staging aus.
 - **Einbindung ins Image:** in `plugin_requirements.txt` auf den **Commit-SHA** gepinnt
   (Tag nur als Kommentar), z. B.
   `git+https://github.com/wus-technik/netbox-sso-redirect@<sha>  # v0.1.0`. Das Repo ist
