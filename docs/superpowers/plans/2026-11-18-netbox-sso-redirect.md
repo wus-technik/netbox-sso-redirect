@@ -1,67 +1,71 @@
-# netbox-sso-redirect – Implementierungsplan
+# netbox-sso-redirect — implementation plan
+
+> Historical implementation plan. The current README and code describe subsequent changes.
+> The original plan required German commit messages; the repository's current documentation language is English.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Ziel:** Ein nicht angemeldeter GET auf `LOGIN_URL` startet sofort den OIDC-Login gegen authentik;
-das lokale Formular bleibt über `?local=1` erreichbar.
+**Goal:** An anonymous GET to `LOGIN_URL` immediately starts OIDC login against authentik;
+the local form remains accessible through `?local=1`.
 
-**Architektur:** Eine Middleware (über `PluginConfig.middleware`) fängt den GET auf `LOGIN_URL`
-ab und rendert eine Brückenseite. Die Seite schickt per `fetch` mit `Accept: application/json`
-einen POST (CSRF-Token, geprüftes `next`) an NetBox' `social_auth_begin` und folgt der
-zurückgelieferten URL. Alles andere geht unverändert an NetBox.
+**Architecture:** Middleware registered through `PluginConfig.middleware` intercepts GET
+requests to `LOGIN_URL` and renders a bridge page. The page uses `fetch` with
+`Accept: application/json` to POST a CSRF token and validated `next` to NetBox's
+`social_auth_begin`, then follows the returned URL. Everything else passes through to NetBox.
 
-**Tech Stack:** Python 3.12, Django (wie in NetBox 4.7.3), social-auth-app-django 6.1.0 /
-social-auth-core 5.2.0 (von NetBox 4.7.3 gepinnt), netbox-docker (Docker Desktop),
-Django-Testrunner `manage.py test`.
+**Tech stack:** Python 3.12, Django as shipped in NetBox 4.7.3, social-auth-app-django 6.1.0 /
+social-auth-core 5.2.0 (pinned by NetBox 4.7.3), netbox-docker on Docker Desktop,
+Django's `manage.py test` runner.
 
-**Spec:** `README.md` (Abschnitte „Geplantes Verhalten“, „Im Image“, „Entwicklung“). Reviews:
-`docs/superpowers/reviews/2026-11-18-spec-readme.md`, `docs/superpowers/reviews/2026-11-18-plan.md`.
-Ref: ITSYS-422.
+**Specification:** README sections "Intended behavior", "Image responsibilities", and
+"Development". Reviews: `docs/superpowers/reviews/2026-11-18-spec-readme.md` and
+`docs/superpowers/reviews/2026-11-18-plan.md`. Ref: ITSYS-422.
 
-## Global Constraints
+## Global constraints
 
-- NetBox `min_version = "4.7.0"`, `max_version = "4.7.99"` – nicht ändern.
-- `__version__` bleibt ein String-Literal in `netbox_sso_redirect/__init__.py`.
-- Einstellungen in `PLUGINS_CONFIG['netbox_sso_redirect']`: `backend` (Standard `oidc`),
-  `local_param` (Standard `local`).
-- Ziel des SSO-POST: `reverse('social_auth_begin', args=[backend])`, nie `social:begin`, nie ein
-  fester Pfad.
-- Kein Inline-JavaScript; das Skript liegt unter `static/netbox_sso_redirect/`.
-- Brückenseite: `Cache-Control` enthält `no-store` und `private`; `X-Frame-Options: DENY`.
-- Rückfallziel für ungültiges oder fehlendes `next`: `settings.LOGIN_REDIRECT_URL`.
-- Keine neuen Laufzeitabhängigkeiten außer dem, was NetBox mitbringt.
-- Jeder Commit: erst `git add <Dateien des Tasks>`, dann `git diff --cached --stat` prüfen, dann
-  `git commit`. Nachrichten auf Deutsch, `ITSYS-422` im Betreff, ohne KI-Co-Author-Trailer.
+- Keep NetBox `min_version = "4.7.0"` and `max_version = "4.7.99"`.
+- Keep `__version__` a string literal in `netbox_sso_redirect/__init__.py`.
+- Settings in `PLUGINS_CONFIG['netbox_sso_redirect']`: `backend` (default `oidc`),
+  `local_param` (default `local`).
+- SSO POST destination: `reverse('social_auth_begin', args=[backend])`, never
+  `social:begin` or a fixed path.
+- No inline JavaScript; place the script under `static/netbox_sso_redirect/`.
+- Bridge headers: `Cache-Control` includes `no-store` and `private`;
+  `X-Frame-Options: DENY`.
+- Invalid or missing `next` falls back to `settings.LOGIN_REDIRECT_URL`.
+- No runtime dependencies beyond those provided by NetBox.
+- For each commit, stage task files with `git add`, inspect `git diff --cached --stat`,
+  then commit. Include `ITSYS-422` in the subject and omit AI co-author trailers.
 
-## Review Focus
+## Review focus
 
-1. **Abgelaufene Sitzung während einer HTMX-Anfrage** → volle Navigation zum SSO, nicht die
-   Brückenseite als Fragment. Test in Task 4 (`test_htmx_expired_session_full_navigation`).
-2. **`next` mit Fremdhost in Varianten** (`//evil`, `/\evil`, `%2F%2Fevil`, `http://` unter HTTPS)
-   → Rückfall auf `LOGIN_REDIRECT_URL`. Tests in Task 3.
-3. **Fehlkonfiguration** (falsches `backend`, `local_param = "next"`, Teil-Konfiguration) → kein
-   500, kein Kreisel, sondern normaler NetBox-Login plus Log-Warnung. Tests in Task 2 und 4.
-4. **`BASE_PATH` gesetzt** → Begin-URL, Skript-URL, Lokal-Link und Rückfallziel tragen das
-   Präfix. Test in Task 4 (eigener Lauf `$TEST_BP`).
-5. **`local`-Varianten** (`local=0`, `local=`, `LOCAL=1`) → Brückenseite; nur genau `local=1`
-   zeigt das Formular. Test in Task 4.
+1. **Session expiry during an HTMX request:** full SSO navigation, not a bridge fragment.
+   Task 4 test: `test_htmx_expired_session_full_navigation`.
+2. **Foreign-host `next` variants** (`//evil`, `/\evil`, `%2F%2Fevil`, HTTP under HTTPS):
+   fall back to `LOGIN_REDIRECT_URL`. Task 3 tests.
+3. **Misconfiguration** (invalid backend, `local_param = "next"`, partial configuration):
+   normal NetBox login plus a warning, not 500 or a loop. Tasks 2 and 4.
+4. **`BASE_PATH`:** prefix the begin URL, script URL, local link, and fallback destination.
+   Task 4, separate `$TEST_BP` run.
+5. **`local` variants** (`local=0`, `local=`, `LOCAL=1`): bridge page;
+   only exact `local=1` shows the form. Task 4.
 
-Bewusst nicht lokal getestet: Fehlerpfad von authentik und Abmelden – beides braucht echtes
-authentik und wird in Task 7 als Staging-Test übergeben.
+Intentionally excluded from local testing in this plan: authentik error flow and logout.
+Both require real authentik and are handed over as staging tests in Task 7.
 
 ---
 
-## Dateistruktur
+## File structure
 
 ```
 dev/
-  docker-compose.yml          # netbox (Digest-Pin), postgres, redis, idp; Repo nach /opt/plugin
-  env/netbox.env              # DB/Redis/SECRET_KEY für die Testumgebung
-  config/plugins.py           # PLUGINS, PLUGINS_CONFIG, OIDC-Werte gegen den Dummy-IdP
-  idp/application/o/netbox/.well-known/openid-configuration   # statisches Discovery-JSON
+  docker-compose.yml          # netbox (digest pin), postgres, redis, idp; repository at /opt/plugin
+  env/netbox.env              # DB/Redis/SECRET_KEY for the test environment
+  config/plugins.py           # PLUGINS, PLUGINS_CONFIG, OIDC settings for the dummy IdP
+  idp/application/o/netbox/.well-known/openid-configuration   # static discovery JSON
 netbox_sso_redirect/
-  __init__.py                 # PluginConfig (middleware eintragen)
-  conf.py                     # Einstellungen lesen und prüfen
+  __init__.py                 # PluginConfig (register middleware)
+  conf.py                     # read and validate settings
   redirects.py                # safe_next()
   middleware.py               # SSORedirectMiddleware
   templates/netbox_sso_redirect/bridge.html
@@ -75,69 +79,75 @@ netbox_sso_redirect/
   tests/test_begin_flow.py
 ```
 
-**Testbefehle:**
+**Test commands:**
 
 ```bash
 # $TEST
 docker compose -f dev/docker-compose.yml run --rm netbox \
   /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py test netbox_sso_redirect --keepdb -v 2
-# $TEST_BP – derselbe Lauf mit Präfix; nur test_base_path läuft dann scharf
+# $TEST_BP — same run with a prefix; only test_base_path is enabled
 docker compose -f dev/docker-compose.yml run --rm -e BASE_PATH=netbox/ netbox \
   /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py test netbox_sso_redirect.tests.test_base_path --keepdb -v 2
 ```
 
-`docker compose run` überschreibt das CMD und überspringt damit das Init-Skript von
-netbox-docker; Migrationen sind nicht nötig, der Testrunner legt seine eigene Datenbank an.
+`docker compose run` overrides CMD and skips netbox-docker's initialization script.
+No separate migration command is needed; the test runner creates its own database.
 
 ---
 
-### Task 0: Plan committen
+### Task 0: Commit the plan
 
 - [ ] `git add docs/superpowers/plans/2026-11-18-netbox-sso-redirect.md docs/superpowers/reviews/2026-11-18-plan.md`,
-  `git diff --cached --stat`, `git commit -m "ITSYS-422: Implementierungsplan und Plan-Review"`.
+  `git diff --cached --stat`, `git commit -m "ITSYS-422: Implementation plan and plan review"`.
 
 ---
 
-### Task 1: Testumgebung mit netbox-docker
+### Task 1: Test environment with netbox-docker
 
 **Files:**
+
 - Create: `dev/docker-compose.yml`, `dev/env/netbox.env`, `dev/config/plugins.py`,
   `dev/idp/application/o/netbox/.well-known/openid-configuration`
 - Create: `netbox_sso_redirect/tests/__init__.py`, `netbox_sso_redirect/tests/test_smoke.py`
-- Modify: `README.md` (Abschnitt „Entwicklung“: Testbefehle, Image-Tag und Digest)
+- Modify README's development section: test commands, image tag, and digest.
 
 **Interfaces:**
-- Produces: `$TEST` und `$TEST_BP` laufen; Plugin ist über `PYTHONPATH=/opt/plugin` importierbar
-  (keine Installation im Container). Dienst `idp` liefert das Discovery-JSON unter
+
+- Produces working `$TEST` and `$TEST_BP` commands. The plugin is importable through
+  `PYTHONPATH=/opt/plugin`, without container installation. The `idp` service serves discovery at
   `http://idp:9000/application/o/netbox/.well-known/openid-configuration`.
 
-- [ ] **Step 1: Image-Tag und Digest festlegen**
+- [ ] **Step 1: Select the image tag and digest**
 
 ```bash
-TAG=v4.7.3   # fehlt der Tag auf Docker Hub: neuesten v4.7.3-*-Tag einsetzen
+TAG=v4.7.3   # if unavailable on Docker Hub, use the latest v4.7.3-* tag
 docker pull netboxcommunity/netbox:$TAG
 docker inspect --format '{{index .RepoDigests 0}}' netboxcommunity/netbox:$TAG
 ```
 
-Expected: `netboxcommunity/netbox@sha256:…`. Tag (als Kommentar) und Digest in die Compose-Datei.
+Expected: `netboxcommunity/netbox@sha256:…`. Record the tag as a comment and the digest in Compose.
 
-- [ ] **Step 2: `dev/docker-compose.yml` schreiben**
+- [ ] **Step 2: Write `dev/docker-compose.yml`**
 
-Dienste:
-- `postgres` (`postgres:17-alpine`, `POSTGRES_DB/USER/PASSWORD=netbox`),
-- `redis` (`valkey/valkey:8-alpine`),
-- `idp` (`python:3.12-alpine`, `command: python -m http.server 9000 -d /srv`,
-  Volume `./idp:/srv:ro`, Port `9000:9000`),
-- `netbox` (Digest aus Step 1, `env_file: env/netbox.env`, `depends_on` alle drei, Volumes
-  `..:/opt/plugin:ro` und `./config/plugins.py:/etc/netbox/config/plugins.py:ro`,
-  `environment: PYTHONPATH: /opt/plugin`, Port `8000:8080`).
+Services:
 
-- [ ] **Step 3: `dev/env/netbox.env` schreiben**
+- `postgres`: `postgres:17-alpine`, `POSTGRES_DB/USER/PASSWORD=netbox`.
+- `redis`: `valkey/valkey:8-alpine`.
+- `idp`: `python:3.12-alpine`, `command: python -m http.server 9000 -d /srv`,
+  volume `./idp:/srv:ro`, port `9000:9000`.
+- `netbox`: digest from step 1, `env_file: env/netbox.env`, depends on all three,
+  volumes `..:/opt/plugin:ro` and `./config/plugins.py:/etc/netbox/config/plugins.py:ro`,
+  `environment: PYTHONPATH: /opt/plugin`, port `8000:8080`.
 
-`DB_HOST=postgres`, `DB_NAME=netbox`, `DB_USER=netbox`, `DB_PASSWORD=netbox`, `REDIS_HOST=redis`,
-`REDIS_CACHE_HOST=redis`, `SECRET_KEY` (beliebig, ≥ 50 Zeichen, nur für Dev), `SKIP_SUPERUSER=true`.
+Historical note: the 2026-11-24 security review subsequently restricted both published ports to localhost.
 
-- [ ] **Step 4: `dev/config/plugins.py` und Discovery-JSON schreiben**
+- [ ] **Step 3: Write `dev/env/netbox.env`**
+
+`DB_HOST=postgres`, `DB_NAME=netbox`, `DB_USER=netbox`, `DB_PASSWORD=netbox`,
+`REDIS_HOST=redis`, `REDIS_CACHE_HOST=redis`, a development-only `SECRET_KEY`
+of at least 50 characters, and `SKIP_SUPERUSER=true`.
+
+- [ ] **Step 4: Write `dev/config/plugins.py` and discovery JSON**
 
 ```python
 PLUGINS = ["netbox_sso_redirect"]
@@ -148,52 +158,57 @@ SOCIAL_AUTH_OIDC_KEY = "netbox-dev"
 SOCIAL_AUTH_OIDC_SECRET = "netbox-dev"
 ```
 
-Discovery-JSON: `issuer` = Endpoint oben, `authorization_endpoint` =
-`http://localhost:9000/authorize` (Browser landet dort auf 404 – gewollt), `token_endpoint`,
-`userinfo_endpoint`, `jwks_uri` auf `http://idp:9000/…` (werden lokal nie aufgerufen).
+Discovery JSON: `issuer` is the endpoint above; `authorization_endpoint` is
+`http://localhost:9000/authorize` (the browser intentionally receives 404 there).
+`token_endpoint`, `userinfo_endpoint`, and `jwks_uri` use `http://idp:9000/…`
+and are never called locally.
 
-- [ ] **Step 5: Smoke-Test schreiben**
+- [ ] **Step 5: Write the smoke test**
 
-`tests/test_smoke.py`, `class PluginLoadedTest(TestCase)`:
-- `test_plugin_installed` → `apps.is_installed("netbox_sso_redirect")`;
-- `test_login_url_from_netbox` → `settings.LOGIN_URL == "/login/"`;
-- `test_versions` → `settings.RELEASE.version == "4.7.3"` und
-  `importlib.metadata.version("social-auth-core") == "5.2.0"` (weicht das Image ab: Werte im Test
-  und im Tech Stack dieses Plans auf das Image anpassen und melden).
+In `tests/test_smoke.py`, class `PluginLoadedTest(TestCase)`:
 
-- [ ] **Step 6: Tests laufen lassen**
+- `test_plugin_installed`: `apps.is_installed("netbox_sso_redirect")`.
+- `test_login_url_from_netbox`: `settings.LOGIN_URL == "/login/"`.
+- `test_versions`: `settings.RELEASE.version == "4.7.3"` and
+  `importlib.metadata.version("social-auth-core") == "5.2.0"`.
+  If the image differs, update test expectations and this plan's tech stack to match and report it.
 
-Run: `docker compose -f dev/docker-compose.yml up -d postgres redis idp`, dann `$TEST`.
+- [ ] **Step 6: Run tests**
+
+Run `docker compose -f dev/docker-compose.yml up -d postgres redis idp`, then `$TEST`.
 Expected: `Ran 3 tests … OK`.
 
-- [ ] **Step 7: README ergänzen und committen**
+- [ ] **Step 7: Update the README and commit**
 
-In „Entwicklung“ `$TEST`, `$TEST_BP` (ausgeschrieben), Tag und Digest eintragen.
+Document the expanded `$TEST` and `$TEST_BP` commands, tag, and digest under Development.
 
 ```bash
 git add dev netbox_sso_redirect/tests README.md
 git diff --cached --stat
-git commit -m "ITSYS-422: Testumgebung mit netbox-docker"
+git commit -m "ITSYS-422: Test environment with netbox-docker"
 ```
 
 ---
 
-### Task 2: Einstellungen lesen und prüfen
+### Task 2: Read and validate settings
 
 **Files:**
+
 - Create: `netbox_sso_redirect/conf.py`
 - Test: `netbox_sso_redirect/tests/test_conf.py`
 
 **Interfaces:**
-- Produces:
-  - `get_settings() -> tuple[str, str]` – `(backend, local_param)` über
-    `get_plugin_config("netbox_sso_redirect", "backend", "oidc")` bzw. `(…, "local_param", "local")`.
-    Die Standardwerte stehen explizit im Aufruf, weil NetBox `default_settings` nur einmal beim
-    Import der Settings einmischt und ein `override_settings` sie sonst verliert.
-  - `validate_settings(backend: str, local_param: str, authentication_backends: list[str]) -> list[str]`
-    – leere Liste = gültig, sonst deutsche Fehlermeldungen.
 
-- [ ] **Step 1: Tests schreiben**
+- `get_settings() -> tuple[str, str]` returns `(backend, local_param)` using
+  `get_plugin_config("netbox_sso_redirect", "backend", "oidc")` and
+  `get_plugin_config("netbox_sso_redirect", "local_param", "local")`.
+  Pass defaults explicitly: NetBox merges `default_settings` only once at import,
+  so `override_settings` would otherwise lose them.
+- `validate_settings(backend: str, local_param: str, authentication_backends: list[str]) -> list[str]`
+  returns an empty list if valid, otherwise error messages.
+  The original plan specified German messages; they were subsequently translated to English.
+
+- [ ] **Step 1: Write tests**
 
 ```python
 OIDC = ["social_core.backends.open_id_connect.OpenIdConnectAuth",
@@ -230,107 +245,114 @@ def test_get_settings_partial_config(self):
     self.assertEqual(get_settings(), ("oidc", "local"))
 ```
 
-- [ ] **Step 2: Fehlschlag prüfen** – `$TEST` → ImportError für `netbox_sso_redirect.conf`.
+- [ ] **Step 2: Verify failure** — `$TEST` raises ImportError for `netbox_sso_redirect.conf`.
+- [ ] **Step 3: Implement `conf.py`**
 
-- [ ] **Step 3: `conf.py` implementieren**
+Validate backends without modifying social-core's global cache. Import each path using
+`social_core.utils.module_member` (skip ImportError), retain subclasses of
+`social_core.backends.base.BaseAuth`, and match `backend` against their `.name`.
+Do not use `load_backends`.
 
-Backend-Prüfung ohne den globalen Cache von social-core: jeden Pfad mit
-`social_core.utils.module_member` importieren (ImportError → überspringen), nur Unterklassen von
-`social_core.backends.base.BaseAuth` behalten, `backend` muss deren `.name` entsprechen.
-`load_backends` nicht verwenden.
-
-- [ ] **Step 4: Tests grün** – `$TEST` → OK.
-
+- [ ] **Step 4: Tests pass** — `$TEST` → OK.
 - [ ] **Step 5: Commit**
 
 ```bash
 git add netbox_sso_redirect/conf.py netbox_sso_redirect/tests/test_conf.py
 git diff --cached --stat
-git commit -m "ITSYS-422: Plugin-Einstellungen prüfen"
+git commit -m "ITSYS-422: Validate plugin settings"
 ```
 
 ---
 
-### Task 3: `next` prüfen
+### Task 3: Validate `next`
 
 **Files:**
+
 - Create: `netbox_sso_redirect/redirects.py`
 - Test: `netbox_sso_redirect/tests/test_redirects.py`
 
 **Interfaces:**
-- Produces: `safe_next(request: HttpRequest) -> str` – letzter Wert von `request.GET["next"]`,
-  wenn `url_has_allowed_host_and_scheme(value, {request.get_host()}, require_https=request.is_secure())`,
-  sonst `settings.LOGIN_REDIRECT_URL`.
 
-- [ ] **Step 1: Tests schreiben** (mit `RequestFactory`; `FALLBACK = settings.LOGIN_REDIRECT_URL`)
+- `safe_next(request: HttpRequest) -> str`: return the last `request.GET["next"]`
+  value if `url_has_allowed_host_and_scheme(value, {request.get_host()}, require_https=request.is_secure())`
+  succeeds; otherwise return `settings.LOGIN_REDIRECT_URL`.
 
-| Test | Request | Erwartet |
+- [ ] **Step 1: Write tests** using `RequestFactory` and `FALLBACK = settings.LOGIN_REDIRECT_URL`.
+
+| Test | Request | Expected |
 |---|---|---|
 | `test_relative_path_kept` | `/login/?next=/dcim/devices/` | `/dcim/devices/` |
-| `test_same_host_absolute_kept` | `?next=http://testserver/ipam/` | unverändert |
+| `test_same_host_absolute_kept` | `?next=http://testserver/ipam/` | unchanged |
 | `test_missing_next` | `/login/` | `FALLBACK` |
 | `test_empty_next` | `?next=` | `FALLBACK` |
 | `test_protocol_relative` | `?next=//evil.example/` | `FALLBACK` |
 | `test_backslash` | `?next=/\evil.example/` | `FALLBACK` |
 | `test_encoded_slashes` | `?next=%2F%2Fevil.example%2F` | `FALLBACK` |
-| `test_double_encoded_stays_relative` | `?next=%252F%252Fevil.example` | genau `%2F%2Fevil.example` (relativer Pfad, kein Host) |
+| `test_double_encoded_stays_relative` | `?next=%252F%252Fevil.example` | exactly `%2F%2Fevil.example` (relative path, no host) |
 | `test_foreign_host` | `?next=https://evil.example/` | `FALLBACK` |
 | `test_http_under_https` | `secure=True`, `?next=http://testserver/` | `FALLBACK` |
 | `test_repeated_next_uses_last` | `?next=//evil&next=/ipam/` | `/ipam/` |
 | `test_repeated_next_last_checked` | `?next=/ipam/&next=//evil` | `FALLBACK` |
 
-- [ ] **Step 2: Fehlschlag prüfen** – `$TEST` → ImportError.
-- [ ] **Step 3: `safe_next` implementieren.**
-- [ ] **Step 4: Tests grün** – `$TEST` → OK.
+- [ ] **Step 2: Verify failure** — `$TEST` → ImportError.
+- [ ] **Step 3: Implement `safe_next`.**
+- [ ] **Step 4: Tests pass** — `$TEST` → OK.
 - [ ] **Step 5: Commit**
 
 ```bash
 git add netbox_sso_redirect/redirects.py netbox_sso_redirect/tests/test_redirects.py
 git diff --cached --stat
-git commit -m "ITSYS-422: next-Parameter prüfen"
+git commit -m "ITSYS-422: Validate the next parameter"
 ```
 
 ---
 
-### Task 4: Middleware und Brückenseite
+### Task 4: Middleware and bridge page
 
 **Files:**
+
 - Create: `netbox_sso_redirect/middleware.py`,
-  `netbox_sso_redirect/templates/netbox_sso_redirect/bridge.html`
-- Modify: `netbox_sso_redirect/__init__.py` (`middleware = ["netbox_sso_redirect.middleware.SSORedirectMiddleware"]`, Kommentar „folgt“ entfernen)
-- Modify: `README.md` („Geplantes Verhalten“ Punkt 1: HTMX-Verhalten ergänzen)
-- Test: `netbox_sso_redirect/tests/test_middleware.py`, `netbox_sso_redirect/tests/test_base_path.py`
+  `netbox_sso_redirect/templates/netbox_sso_redirect/bridge.html`.
+- Modify `netbox_sso_redirect/__init__.py`: register
+  `middleware = ["netbox_sso_redirect.middleware.SSORedirectMiddleware"]`
+  and remove the placeholder comment.
+- Modify README behavior item 1 to describe HTMX handling.
+- Tests: `netbox_sso_redirect/tests/test_middleware.py`,
+  `netbox_sso_redirect/tests/test_base_path.py`.
 
 **Interfaces:**
-- Consumes: `get_settings()`, `validate_settings()` (Task 2), `safe_next()` (Task 3).
-- Produces: `class SSORedirectMiddleware` mit `__init__(self, get_response)` und
-  `__call__(self, request) -> HttpResponse`. Template-Kontext für Task 5:
-  `begin_url: str`, `next_url: str`, `local_url: str` (`LOGIN_URL?<local_param>=1&next=<next_url>`,
-  mit `urlencode`). Das Formular hat `id="sso-redirect-form"`, das Fehlerelement
-  `id="sso-redirect-error"` (anfangs mit `hidden`).
 
-Verhalten:
-- `__init__`: `validate_settings(*get_settings(), settings.AUTHENTICATION_BACKENDS)`; bei Fehlern
-  je eine `logger.warning` (Logger `netbox_sso_redirect`) und `raise MiddlewareNotUsed`.
-- `__call__` greift nur, wenn `request.method == "GET"`, `request.path == settings.LOGIN_URL`
-  (zur Laufzeit gelesen), `not request.user.is_authenticated` und
-  `request.GET.get(local_param) != "1"`. Sonst `self.get_response(request)`.
-- Bei `HX-Request`-Header: leere 200-Antwort mit `HX-Redirect: <request.get_full_path()>` (volle
-  Navigation statt Fragment; die Folgeanfrage hat keinen HX-Header und bekommt die Brückenseite).
-- Sonst `render(request, "netbox_sso_redirect/bridge.html", ctx)`, danach
-  `add_never_cache_headers(response)` und `response["X-Frame-Options"] = "DENY"`.
-- `bridge.html`: eigenständiges HTML (erbt nicht von NetBox-Templates), `{% csrf_token %}`,
-  `<input type="hidden" name="next" value="{{ next_url }}">` (Auto-Escaping), sichtbarer
-  Submit-Knopf „Mit SSO anmelden“, Link „Lokale Anmeldung“ auf `local_url`, Skript per
-  `{% static 'netbox_sso_redirect/sso-redirect.js' %}` mit `defer`. Die Datei kommt in Task 5;
-  NetBox nutzt `StaticFilesStorage`, das Fehlen stört das Rendern nicht.
+- Consumes `get_settings()`, `validate_settings()` from Task 2 and `safe_next()` from Task 3.
+- Produces `SSORedirectMiddleware` with `__init__(self, get_response)` and
+  `__call__(self, request) -> HttpResponse`.
+- Template context for Task 5: `begin_url: str`, `next_url: str`, `local_url: str`
+  (`LOGIN_URL?<local_param>=1&next=<next_url>`, encoded with `urlencode`).
+  Form ID: `sso-redirect-form`. Error element ID: `sso-redirect-error`, initially hidden.
 
-- [ ] **Step 1: Tests in `test_middleware.py` schreiben**
+Behavior:
 
-`setUpTestData`: normaler Nutzer `self.user`; Superuser `self.admin` mit API-Token. Token-Modell
-und Header-Format aus `users/models/tokens.py` im Container ablesen
-(`docker compose … run --rm netbox cat /opt/netbox/netbox/users/models/tokens.py`) und im Test so
-verwenden, wie NetBox 4.7.3 sie vorgibt.
+- Constructor: `validate_settings(*get_settings(), settings.AUTHENTICATION_BACKENDS)`;
+  log each error with `logger.warning` on `netbox_sso_redirect`, then raise `MiddlewareNotUsed`.
+- Intercept only GET, `request.path == settings.LOGIN_URL` (read at runtime),
+  anonymous users, and `request.GET.get(local_param) != "1"`.
+  Otherwise call `self.get_response(request)`.
+- With `HX-Request`, return an empty 200 response with
+  `HX-Redirect: <request.get_full_path()>`. Full navigation drops the HX header,
+  so the next request receives the bridge.
+- Otherwise render `netbox_sso_redirect/bridge.html`, apply
+  `add_never_cache_headers(response)`, and set `X-Frame-Options: DENY`.
+- The original `bridge.html` design is standalone HTML, without NetBox template inheritance:
+  `{% csrf_token %}`, an auto-escaped hidden `next` input, a visible "Sign in with SSO"
+  button, a "Local login" link to `local_url`, and
+  `{% static 'netbox_sso_redirect/sso-redirect.js' %}` with `defer`.
+  The script arrives in Task 5; NetBox's `StaticFilesStorage` allows rendering before it exists.
+
+- [ ] **Step 1: Write `test_middleware.py`**
+
+In `setUpTestData`, create ordinary `self.user` and superuser `self.admin` with an API
+token. Read `users/models/tokens.py` in the container
+(`docker compose … run --rm netbox cat /opt/netbox/netbox/users/models/tokens.py`)
+and use the token model/header format required by NetBox 4.7.3.
 
 ```python
 BRIDGE = "netbox_sso_redirect/bridge.html"
@@ -403,13 +425,13 @@ def test_other_paths_untouched(self):
             self.assertTemplateNotUsed(r, BRIDGE)
 
 def test_api_with_valid_token(self):
-    r = self.client.get("/api/dcim/sites/", headers={"Authorization": <gültiger Token-Header>,
+    r = self.client.get("/api/dcim/sites/", headers={"Authorization": <valid token header>,
                                                      "Accept": "application/json"})
     self.assertEqual(r.status_code, 200)
     self.assertEqual(r["Content-Type"], "application/json")
 
 def test_api_with_invalid_token(self):
-    r = self.client.get("/api/dcim/sites/", headers={"Authorization": <ungültiger Token-Header>,
+    r = self.client.get("/api/dcim/sites/", headers={"Authorization": <invalid token header>,
                                                      "Accept": "application/json"})
     self.assertEqual(r.status_code, 403)
     self.assertTemplateNotUsed(r, BRIDGE)
@@ -431,19 +453,20 @@ def test_invalid_settings_full_stack_falls_back_to_netbox_login(self):
                 {"backend": "oidc", "local_param": "next"}):
         with self.subTest(cfg=cfg), override_settings(PLUGINS_CONFIG={"netbox_sso_redirect": cfg}):
             with self.assertLogs("netbox_sso_redirect", "WARNING"):
-                r = Client().get("/login/")   # neuer Client = neuer Handler = neue Middleware-Kette
+                r = Client().get("/login/")   # new client = new handler = new middleware chain
             self.assertEqual(r.status_code, 200)
             self.assertTemplateUsed(r, "login.html")
             self.assertTemplateNotUsed(r, BRIDGE)
 ```
 
-Weicht der Status in `test_api_with_invalid_token` oder `test_other_paths_untouched` bei NetBox
-4.7.3 ab (z. B. 401 statt 403), den beobachteten NetBox-Wert eintragen – entscheidend ist, dass es
-nicht die Brückenseite ist und kein Redirect auf `/login/`.
+If NetBox 4.7.3 returns a different status in `test_api_with_invalid_token` or
+`test_other_paths_untouched` (for example 401 rather than 403), record the observed
+NetBox status. It must not return the bridge or redirect to `/login/`.
 
-- [ ] **Step 2: Test `test_base_path.py` schreiben**
+- [ ] **Step 2: Write `test_base_path.py`**
 
-`@skipUnless(settings.BASE_PATH == "netbox/", "nur mit $TEST_BP")`, Klasse `BasePathTest(TestCase)`:
+Use `@skipUnless(settings.BASE_PATH == "netbox/", "only with $TEST_BP")`
+on `BasePathTest(TestCase)`:
 
 ```python
 def test_bridge_with_prefix(self):
@@ -452,48 +475,50 @@ def test_bridge_with_prefix(self):
     self.assertContains(r, 'action="/netbox/oauth/begin/oidc/"')
     self.assertContains(r, '/netbox/static/netbox_sso_redirect/sso-redirect.js')
     self.assertContains(r, 'href="/netbox/login/?local=1&amp;next=%2Fnetbox%2F"')
-    self.assertContains(r, 'name="next" value="/netbox/"')   # Rückfall LOGIN_REDIRECT_URL
+    self.assertContains(r, 'name="next" value="/netbox/"')   # LOGIN_REDIRECT_URL fallback
 
 def test_local_with_prefix(self):
     self.assertTemplateUsed(self.client.get("/netbox/login/?local=1"), "login.html")
 ```
 
-- [ ] **Step 3: Fehlschlag prüfen** – `$TEST` → Bridge-Tests schlagen fehl (Template nicht benutzt).
-- [ ] **Step 4: `middleware.py`, `bridge.html` implementieren, Middleware in `__init__.py` eintragen.**
-- [ ] **Step 5: Tests grün** – `$TEST` → OK (inklusive Task 1–3; `test_base_path` wird
-  übersprungen), dann `$TEST_BP` → `test_base_path` OK.
-- [ ] **Step 6: README** – Punkt 1 um einen Satz ergänzen: HTMX-Anfragen bekommen `HX-Redirect`
-  statt der Brückenseite, damit der Browser ganz neu navigiert.
+- [ ] **Step 3: Verify failure** — bridge tests fail because the template is not used.
+- [ ] **Step 4: Implement middleware and bridge; register middleware in `__init__.py`.**
+- [ ] **Step 5: Tests pass** — `$TEST` includes Tasks 1–3 and skips `test_base_path`;
+  then `$TEST_BP` passes the prefix tests.
+- [ ] **Step 6: README** — add to item 1 that HTMX receives `HX-Redirect` for full navigation.
 - [ ] **Step 7: Commit**
 
 ```bash
 git add netbox_sso_redirect/middleware.py netbox_sso_redirect/templates netbox_sso_redirect/__init__.py \
         netbox_sso_redirect/tests/test_middleware.py netbox_sso_redirect/tests/test_base_path.py README.md
 git diff --cached --stat
-git commit -m "ITSYS-422: Middleware und Brückenseite"
+git commit -m "ITSYS-422: Middleware and bridge page"
 ```
 
 ---
 
-### Task 5: Skript und SSO-Start ende-zu-ende
+### Task 5: Script and SSO start integration
 
 **Files:**
+
 - Create: `netbox_sso_redirect/static/netbox_sso_redirect/sso-redirect.js`
 - Test: `netbox_sso_redirect/tests/test_begin_flow.py`
 
 **Interfaces:**
-- Consumes: Formular `#sso-redirect-form`, Fehlerelement `#sso-redirect-error` (Task 4).
 
-Skript (kein Framework, kein Build):
-`DOMContentLoaded` → `fetch(form.action, {method: "POST", body: new FormData(form),
-headers: {Accept: "application/json"}, credentials: "same-origin"})`. Antwort mit `url` →
-`location.assign(url)`. Antwort mit `html` oder Fehler/Nicht-OK-Status → `#sso-redirect-error`
-sichtbar machen (`hidden` entfernen) und den Knopf fokussieren; kein automatischer zweiter Versuch.
+- Consumes form `#sso-redirect-form` and error element `#sso-redirect-error` from Task 4.
 
-- [ ] **Step 1: Integrationstest schreiben**
+Script without framework or build step:
+on `DOMContentLoaded`, call `fetch(form.action, {method: "POST", body: new FormData(form),
+headers: {Accept: "application/json"}, credentials: "same-origin"})`.
+A response with `url` navigates through `location.assign(url)`.
+A response with `html`, an error, or a non-OK status reveals `#sso-redirect-error`
+by removing `hidden` and focuses the button. No automatic second attempt.
 
-`self.client = Client(enforce_csrf_checks=True)`. `oidc_config` ist eine Methode mit
-`@cache`-Dekorator; deshalb **`return_value`** patchen:
+- [ ] **Step 1: Write the integration test**
+
+Use `Client(enforce_csrf_checks=True)`. Since `oidc_config` is a method decorated
+with `@cache`, patch its **`return_value`**:
 
 ```python
 IDP = {"authorization_endpoint": "https://idp.example/authorize"}
@@ -524,26 +549,27 @@ def test_script_is_collectable(self):
     self.assertIsNotNone(finders.find("netbox_sso_redirect/sso-redirect.js"))
 ```
 
-- [ ] **Step 2: Fehlschlag prüfen** – `$TEST` → nur `test_script_is_collectable` schlägt fehl.
-  Schlägt zusätzlich `test_begin_stores_next_in_session` fehl, obwohl `test_begin_returns_idp_url_as_json`
-  grün ist: stoppen und melden – dann übernimmt social-core `next` nicht wie angenommen.
-- [ ] **Step 3: `sso-redirect.js` schreiben.**
-- [ ] **Step 4: Tests grün** – `$TEST` → OK.
-- [ ] **Step 5: Manuelle Prüfung im Browser**
+- [ ] **Step 2: Verify failure** — only `test_script_is_collectable` should fail.
+  If `test_begin_stores_next_in_session` fails while `test_begin_returns_idp_url_as_json`
+  passes, stop and report: social-core is not preserving `next` as assumed.
+- [ ] **Step 3: Write `sso-redirect.js`.**
+- [ ] **Step 4: Tests pass** — `$TEST` → OK.
+- [ ] **Step 5: Manual browser check**
 
-`docker compose -f dev/docker-compose.yml up -d`; einmalig
+Run `docker compose -f dev/docker-compose.yml up -d`, then once:
 `docker compose -f dev/docker-compose.yml exec netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py migrate`
-und `… collectstatic --no-input`. `http://localhost:8000/` öffnen. Expected: über `/login/?next=/`
-weiter auf `http://localhost:9000/authorize?…` (404 dort ist richtig). Browser-Konsole ohne CSP-
-oder JS-Fehler. Mit deaktiviertem JavaScript: Knopf und Link „Lokale Anmeldung“ sichtbar.
-`/login/?local=1` zeigt das NetBox-Formular. Ergebnis kurz im Commit-Text festhalten.
+and `… collectstatic --no-input`. Open `http://localhost:8000/`.
+Expect `/login/?next=/` followed by `http://localhost:9000/authorize?…` (404 is expected).
+The console should contain no CSP or JavaScript errors.
+With JavaScript disabled, the button and "Local login" link remain visible.
+`/login/?local=1` shows the NetBox form. Briefly record the result in the commit message.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add netbox_sso_redirect/static netbox_sso_redirect/tests/test_begin_flow.py
 git diff --cached --stat
-git commit -m "ITSYS-422: SSO-Start per fetch gegen CSP form-action"
+git commit -m "ITSYS-422: Start SSO with fetch under CSP form-action"
 ```
 
 ---
@@ -551,43 +577,48 @@ git commit -m "ITSYS-422: SSO-Start per fetch gegen CSP form-action"
 ### Task 6: Release 0.1.0
 
 **Files:**
-- Modify: `README.md` (Status: Umsetzung vorhanden; Hinweis, dass das Image nach der Installation
-  `collectstatic` ausführen muss)
-- Modify ggf.: `pyproject.toml` (`[tool.setuptools.package-data]`)
 
-- [ ] **Step 1: Wheel isoliert bauen**
+- Modify README status to describe the implementation and require `collectstatic`
+  after installation in the image.
+- Modify `pyproject.toml` if needed: `[tool.setuptools.package-data]`.
 
-In einer venv außerhalb des Repos `pip install build`, dann im Repo `python -m build --wheel`.
-Expected: `dist/netbox_sso_redirect-0.1.0-py3-none-any.whl`; `python -m zipfile -l dist/*.whl`
-zeigt `bridge.html` und `sso-redirect.js`. Fehlen sie (zu erwarten):
-`[tool.setuptools.package-data] netbox_sso_redirect = ["templates/**/*", "static/**/*"]`
-ergänzen, neu bauen, erneut prüfen.
+- [ ] **Step 1: Build the wheel in isolation**
 
-- [ ] **Step 2: Kompletter Testlauf** – `$TEST` und `$TEST_BP` → OK.
+Install `build` in a virtual environment outside the repository, then run
+`python -m build --wheel` inside it. Expect
+`dist/netbox_sso_redirect-0.1.0-py3-none-any.whl`.
+`python -m zipfile -l dist/*.whl` must list `bridge.html` and `sso-redirect.js`.
+If missing, as expected initially, add
+`[tool.setuptools.package-data] netbox_sso_redirect = ["templates/**/*", "static/**/*"]`,
+rebuild, and verify again.
+
+- [ ] **Step 2: Full test run** — `$TEST` and `$TEST_BP` → OK.
 - [ ] **Step 3: Commit**
 
 ```bash
 git add README.md pyproject.toml
 git diff --cached --stat
 git commit -m "ITSYS-422: Release 0.1.0"
-git status --short   # muss leer sein (dist/ und build/ sind ignoriert)
+git status --short   # must be empty (dist/ and build/ are ignored)
 ```
 
-- [ ] **Step 4: Tag** – `git tag -a v0.1.0 -m "v0.1.0"`, SHA notieren
-  (`git rev-parse "v0.1.0^{commit}"`).
-- [ ] **Step 5: Push – erst nach Freigabe durch Christian** – `git push origin main --follow-tags`.
+- [ ] **Step 4: Tag** — `git tag -a v0.1.0 -m "v0.1.0"`; record the SHA
+  with `git rev-parse "v0.1.0^{commit}"`.
+- [ ] **Step 5: Push only after Christian's approval** — `git push origin main --follow-tags`.
 
 ---
 
-### Task 7: Übergabe an docker-netbox-wus
+### Task 7: Handoff to docker-netbox-wus
 
-Das Image-Repo wird hier nicht geändert. Es entsteht eine Übergabe in
-`~/projects/_handoff/<Verzeichnisname von docker-netbox-wus>/2026-11-18-netbox-sso-redirect.md`
-(Verzeichnisname unter `~/projects` vorher prüfen, Ordner bei Bedarf anlegen).
+Do not modify the image repository here. Write the handoff to
+`~/projects/_handoff/<docker-netbox-wus-directory-name>/2026-11-18-netbox-sso-redirect.md`.
+Verify the receiving project's directory name under `~/projects` first and create
+the destination folder if needed.
 
-- [ ] **Step 1: Übergabe schreiben** mit:
+- [ ] **Step 1: Write a handoff** covering:
   - `plugin_requirements.txt`: `git+https://github.com/wus-technik/netbox-sso-redirect@<SHA>  # v0.1.0`
-  - Lesetoken nur per BuildKit-Secret und nur für den einen Befehl, ohne Datei im Image:
+  - Supply the read token only through a BuildKit secret for a single command,
+    without retaining a file in the image:
 
     ```dockerfile
     RUN --mount=type=secret,id=gh_token \
@@ -597,15 +628,16 @@ Das Image-Repo wird hier nicht geändert. Es entsteht eine Übergabe in
         /opt/netbox/venv/bin/pip install --no-cache-dir -r /opt/netbox/plugin_requirements.txt
     ```
 
-    Kein `git config --global`, kein `--build-arg`, kein Token in der URL, kein `set -x`.
-    Danach das fertige Image prüfen: `grep -r` nach dem Token-Präfix in `/root/.gitconfig`,
-    `/opt/netbox/venv/**/direct_url.json` und im Build-Log – erwartet: kein Treffer.
-  - `configuration/plugins.py`: Plugin aktivieren; `collectstatic` muss nach der Installation laufen.
-  - `SOCIAL_AUTH_LOGIN_ERROR_URL` = `LOGIN_URL` + `?local=1` (mit `BASE_PATH`).
-  - `LOGIN_FORM_HIDDEN` bleibt `False`.
-  - `LOGOUT_REDIRECT_URL` auf die End-Session-URL von authentik; Landeseite danach nicht `/login/`.
-  - Proxy: `X-Forwarded-*` überschreiben, `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS` prüfen, CSP notieren.
-  - Staging-Tests (lokal nicht abgedeckt): Login mit `next`; Fehler bei authentik →
-    `/login/?local=1`; Abmelden ohne `id_token_hint` beendet die authentik-Sitzung; lokaler Login
-    über `?local=1`; Browser-Konsole ohne CSP-Fehler.
-- [ ] **Step 2: In Jira ITSYS-422 kommentieren**, dass das Plugin fertig ist und die Übergabe liegt.
+    No `git config --global`, `--build-arg`, token in the URL, or `set -x`.
+    Inspect the finished image: search for the token prefix in `/root/.gitconfig`,
+    `/opt/netbox/venv/**/direct_url.json`, and build logs; expect no matches.
+  - Enable the plugin in `configuration/plugins.py`; run `collectstatic` after installation.
+  - Set `SOCIAL_AUTH_LOGIN_ERROR_URL` to `LOGIN_URL` plus `?local=1`, including `BASE_PATH`.
+  - Keep `LOGIN_FORM_HIDDEN = False`.
+  - Point `LOGOUT_REDIRECT_URL` to authentik's end-session URL; do not land on `/login/`.
+  - Proxy: overwrite `X-Forwarded-*`, check `ALLOWED_HOSTS` and
+    `CSRF_TRUSTED_ORIGINS`, and record CSP.
+  - Staging tests not covered locally: login with `next`; authentik error to
+    `/login/?local=1`; logout without `id_token_hint` ends the authentik session;
+    local login through `?local=1`; no browser CSP errors.
+- [ ] **Step 2: Comment on Jira ITSYS-422** that the plugin is complete and the handoff is available.

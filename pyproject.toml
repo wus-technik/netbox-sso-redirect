@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "netbox-sso-redirect"
 dynamic = ["version"]
-description = "NetBox-Plugin: SSO-Login automatisch starten, lokales Formular nur über /login/?local=1"
+description = "NetBox plugin: start SSO automatically; local login form only via /login/?local=1"
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "W&S Technik GmbH" }]

@@ -3,14 +3,14 @@ from django.utils.http import url_has_allowed_host_and_scheme
 
 
 def is_safe(request, value):
-    """True, wenn ``value`` ein Weiterleitungsziel auf diesem Host ohne Schema-Abstieg ist."""
+    """Return True if ``value`` targets this host without a scheme downgrade."""
     return bool(value) and url_has_allowed_host_and_scheme(
         value, {request.get_host()}, require_https=request.is_secure()
     )
 
 
 def session_next(request):
-    """Das ``next``, das social-core beim SSO-Start in der Session abgelegt hat, falls sicher."""
+    """Return the safe ``next`` value stored in the session by social-core at SSO start."""
     value = request.session.get("next", "")
     return value if isinstance(value, str) and is_safe(request, value) else None
 

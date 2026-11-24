@@ -7,7 +7,7 @@
       return;
     }
 
-    // Ohne fetch/FormData bleibt das normale Formular mit nativem Submit.
+    // Without fetch/FormData, keep the normal form and native submission.
     if (typeof window.fetch !== "function" || typeof window.FormData !== "function") {
       return;
     }
@@ -43,7 +43,7 @@
       if (button) {
         button.disabled = true;
       }
-      // Spinner bis zum Seitenwechsel, auch beim manuellen Versuch.
+      // Keep the spinner visible until navigation, including manual retries.
       if (status) {
         status.hidden = false;
       }
@@ -59,7 +59,7 @@
           credentials: "same-origin",
         });
       } catch (err) {
-        // Synchroner Fehler: gleicher Fehlerpfad wie bei asynchronen.
+        // Synchronous failures use the same error path as asynchronous failures.
         pending = false;
         showError();
         return;
@@ -73,7 +73,7 @@
         })
         .then(function (data) {
           if (data && typeof data.url === "string" && data.url) {
-            // Knopf bleibt deaktiviert, die Seite wird verlassen.
+            // Keep the button disabled while navigating away.
             window.location.assign(data.url);
           } else {
             pending = false;
@@ -86,22 +86,22 @@
         });
     }
 
-    // Auch der manuelle Versuch läuft per fetch (CSP form-action).
+    // Manual retries also use fetch to work with CSP form-action.
     form.addEventListener("submit", function (event) {
       event.preventDefault();
       attempt();
     });
 
-    // Zurück vom IdP aus dem Back-Forward-Cache (v. a. iOS Safari): Die Seite käme sonst mit
-    // Spinner und gesperrtem Knopf zurück. Kein erneuter Autostart, der Nutzer wollte zurück.
+    // Returning from the IdP through the back-forward cache (especially iOS Safari) would
+    // otherwise restore the spinner and disabled button. Do not auto-start when the user goes back.
     window.addEventListener("pageshow", function (event) {
       if (event.persisted) {
         reset();
       }
     });
 
-    // Automatischer Start einmalig; Wiederholung nur per Klick. Nach einem SSO-Fehler
-    // (data-autostart="false") wartet die Seite auf den Klick.
+    // Auto-start once; retry only on click. After an SSO error,
+    // data-autostart="false" makes the page wait for a click.
     if (form.getAttribute("data-autostart") !== "false") {
       attempt();
     }

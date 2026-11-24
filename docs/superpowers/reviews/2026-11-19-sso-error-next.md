@@ -1,42 +1,43 @@
-# Review: `next` nach SSO-Fehler, Preconnect, Spinner (0.3.0, 2026-11-19)
+# Review: preserving `next` after SSO errors, preconnect, spinner (0.3.0, 2026-11-19)
 
-**Umfang:** Version 0.3.0, Branch `feature/ITSYS-422-sso-error-next`, Commits `cc77589..754a088`, dazu
-die Korrekturen aus diesem Review. Anlass ist die Rückmeldung aus dem Staging-Test von
-docker-netbox-wus. Ref: ITSYS-422.
+**Scope:** Version 0.3.0, branch `feature/ITSYS-422-sso-error-next`, commits
+`cc77589..754a088`, plus fixes from this review. Prompted by feedback from the
+docker-netbox-wus staging test. Ref: ITSYS-422.
 
-**Modell/Befehl:** Codex CLI 0.170.0 über den Agenten `codex-reviewer`, `codex exec --sandbox
-read-only --cd <repo> --model gpt-6.1-sol -c model_reasoning_effort=high - < <prompt>` (Prompt per
-stdin). Codex hat social-core 5.2.0, social-app-django 6.1.0 und NetBox 4.7.3 aus den gepinnten
-Quellen gelesen, aber kein Docker gehabt. Die Tests liefen im NetBox-4.7.3-Container: `$TEST` 81 OK,
-4 übersprungen; `$TEST_BP` 4 OK.
+**Model/command:** Codex CLI 0.170.0 via the `codex-reviewer` agent,
+`codex exec --sandbox read-only --cd <repo> --model gpt-6.1-sol -c model_reasoning_effort=high - < <prompt>`
+(prompt via stdin). Codex read pinned social-core 5.2.0, social-app-django 6.1.0,
+and NetBox 4.7.3 sources but had no Docker access. Tests ran in the NetBox 4.7.3
+container: `$TEST` 81 OK, four skipped; `$TEST_BP` four OK.
 
-**Ergebnis:** APPROVE. Codex hat keinen kritischen, hohen oder mittleren Befund gemeldet.
+**Result:** APPROVE. Codex reported no critical, high, or moderate findings.
 
-| # | Schwere | Ort | Befund | Urteil | Umgesetzt |
+| # | Severity | Location | Finding | Verdict | Resolution |
 |---|---|---|---|---|---|
-| 1 | gering | `conf.py` `get_idp_origin` | Ein fehlerhafter Endpunkt (z. B. `https://[idp.example/x`) führt bei `urlsplit` zu einem `ValueError`, die Brückenseite antwortet dann mit 500. | gültig | `try/except ValueError` (auch für einen ungültigen Port) → kein Preconnect; Tests |
-| 2 | gering | `conf.py` `get_idp_origin` | Der Ursprung wurde aus `netloc` gebaut; Zugangsdaten (`user:pw@`) aus der Endpunkt-URL wären im HTML gelandet. (Beobachtung des Agenten) | gültig | Ursprung aus `hostname` und `port`, IPv6 in Klammern; Tests |
-| 3 | gering | `tests/test_base_path.py` | Die Wiederherstellung von `next` war unter `BASE_PATH` nicht getestet. | gültig | `test_restore_next_with_prefix` |
-| 4 | gering | `tests/test_sso_error.py` | Der Docstring sprach von einem „gültigen state“; social-core wertet `error` aber vor dem state aus. | gültig | Docstring präzisiert; der Test läuft weiter über den echten Fehlerweg |
+| 1 | low | `conf.py` `get_idp_origin` | A malformed endpoint such as `https://[idp.example/x` causes `urlsplit` to raise `ValueError`, returning 500 from the bridge. | valid | Catch `ValueError`, including invalid ports, and omit preconnect; tests added |
+| 2 | low | `conf.py` `get_idp_origin` | Building the origin from `netloc` could expose endpoint credentials (`user:pw@`) in HTML. Agent observation. | valid | Build from `hostname` and `port`, bracket IPv6; tests added |
+| 3 | low | `tests/test_base_path.py` | Restoring `next` was not tested under `BASE_PATH`. | valid | Added `test_restore_next_with_prefix` |
+| 4 | low | `tests/test_sso_error.py` | The docstring described a valid state, but social-core evaluates `error` before state. | valid | Clarified the docstring; the test still exercises the real error path |
 
-**Von Codex bestätigt:**
-- Den Schlüssel `session["next"]` setzt `do_auth`; der Fehlerweg (`SocialAuthExceptionMiddleware`) lässt die Session unverändert.
-- Kein offener Redirect, keine Schleife, die 302-Antwort ist `no-store`, Parameter bleiben erhalten.
-- Kein `crossorigin` nötig; das Escaping im Template genügt.
-- Nach einer Rückkehr aus dem Back-Forward-Cache startet der Login nicht erneut automatisch.
-- Das README stimmt mit dem Code überein.
+**Confirmed by Codex:**
 
-**Restrisiko, festgehalten im README:** Ein älterer Wert für `next` kann in der Session stehen bleiben, wenn ein späterer Start kein `next` mitschickt. Der Wert wird trotzdem geprüft; schlimmstenfalls landet man auf einer anderen Seite desselben Hosts.
+- `do_auth` sets `session["next"]`; `SocialAuthExceptionMiddleware` leaves the session unchanged.
+- No open redirect or loop; the 302 response is `no-store`, and parameters are retained.
+- No `crossorigin` is needed; template escaping is sufficient.
+- Returning from the back-forward cache does not automatically restart login.
+- The README matches the implementation.
 
-## Manuelle Prüfung (Browser, lokaler Stack)
+**Residual risk documented in the README:** an older `next` value can remain in the
+session if a later start omits it. It is still validated; at worst the user lands
+on another page on the same host.
 
-Callback `/oauth/complete/oidc/?error=access_denied&state=<aktuell>` nach einem Start von `/dcim/devices/` aus:
+## Manual check (browser, local stack)
 
-- **Gesperrter lokaler Login:**
-  - Ziel ist `/login/?local=1&next=%2Fdcim%2Fdevices%2F`.
-  - Brückenseite ohne Autostart, `next` steht im Formular.
-  - Genau ein Toast: „Single Sign-On ist fehlgeschlagen …“.
-- **Freigegebener lokaler Login:**
-  - Gleiches Ziel, NetBox' Formular mit `next`.
-  - Ein sichtbarer Toast.
-  - Der zweite Text aus dem Staging-Bericht („… kann nicht gestartet werden“) ist NetBox' versteckter Block `#sso-error` (`d-none`) in `login.html`, keine zweite Meldung.
+Callback `/oauth/complete/oidc/?error=access_denied&state=<current>` after starting
+from `/dcim/devices/`:
+
+- **Local login blocked:** destination `/login/?local=1&next=%2Fdcim%2Fdevices%2F`;
+  bridge without auto-start, `next` present in the form, exactly one "Single sign-on failed …" toast.
+- **Local login allowed:** same destination, NetBox form containing `next`, one visible toast.
+  The second text in the staging report ("Unable to begin single sign-on …") is
+  NetBox's hidden `#sso-error` block (`d-none`) in `login.html`, not a second message.

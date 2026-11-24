@@ -18,8 +18,8 @@ IDP = {"authorization_endpoint": "https://idp.example/authorize"}
 
 
 class LocalLoginBlockedTest(TestCase):
-    """local_login=False. Jeder Test baut einen neuen Client, damit die Middleware-Kette
-    mit der überschriebenen Konfiguration neu aufgebaut wird."""
+    """local_login=False. Each test creates a new client so the middleware chain
+    is rebuilt with the overridden configuration."""
 
     @classmethod
     def setUpTestData(cls):
@@ -47,6 +47,26 @@ class LocalLoginBlockedTest(TestCase):
         self.assertEqual(r.status_code, 403)
         self.assertNotIn("_auth_user_id", self.client.session)
 
+    def test_method_override_does_not_bypass_block(self):
+        for path in ("/login/", reverse("users-api:token_provision")):
+            with self.subTest(path=path), self.assertLogs("netbox_sso_redirect", "WARNING"):
+                response = self.client.post(
+                    path, {**CREDS, "_method": "GET"},
+                    headers={"X-HTTP-Method-Override": "GET"},
+                )
+            self.assertEqual(response.status_code, 403)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_other_methods_do_not_authenticate_or_issue_tokens(self):
+        before = Token.objects.count()
+        for path in ("/login/", reverse("users-api:token_provision")):
+            for method in ("put", "patch", "delete"):
+                with self.subTest(path=path, method=method):
+                    response = getattr(self.client, method)(path, CREDS, content_type="application/json")
+                    self.assertEqual(response.status_code, 405)
+                    self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertEqual(Token.objects.count(), before)
+
     def test_token_provision_forbidden(self):
         before = Token.objects.count()
         with self.assertLogs("netbox_sso_redirect", "WARNING"):
@@ -63,7 +83,7 @@ class LocalLoginBlockedTest(TestCase):
     def test_bridge_without_local_link(self):
         r = self.client.get("/login/?next=/dcim/")
         self.assertTemplateUsed(r, BRIDGE)
-        self.assertNotContains(r, "Lokale Anmeldung")
+        self.assertNotContains(r, "Local login")
         self.assertNotContains(r, "local=1")
         self.assertContains(r, 'data-autostart="true"')
 
@@ -75,13 +95,13 @@ class LocalLoginBlockedTest(TestCase):
         self.assertContains(r, 'name="next" value="/dcim/"')
 
     def test_post_login_under_script_name_forbidden(self):
-        # WSGI-Mount: request.path = /mount/login/, Django verteilt nach path_info /login/.
+        # WSGI mount: request.path = /mount/login/; Django routes using path_info /login/.
         with self.assertLogs("netbox_sso_redirect", "WARNING"):
             r = self.client.post("/login/", CREDS, SCRIPT_NAME="/mount")
         self.assertEqual(r.status_code, 403)
         self.assertNotIn("_auth_user_id", self.client.session)
 
-    # oidc_config ist per @cache dekoriert, daher return_value statt Funktionsersatz.
+    # oidc_config is decorated with @cache, so patch return_value instead of replacing the function.
     @mock.patch.object(OpenIdConnectAuth, "oidc_config", return_value=IDP)
     def test_sso_begin_still_works(self, _mock):
         r = self.client.get("/login/")
@@ -127,7 +147,7 @@ class LocalLoginConfigTest(TestCase):
             with self.assertLogs("netbox_sso_redirect", "WARNING"):
                 client = Client()
                 r = client.get("/login/")
-                # Weiterleitung aus, NetBox' Seite kommt durch; der POST bleibt gesperrt.
+                # Redirect disabled: NetBox's page passes through, but POST remains blocked.
                 self.assertTemplateUsed(r, "login.html")
                 self.assertTemplateNotUsed(r, BRIDGE)
                 self.assertEqual(client.post("/login/", CREDS).status_code, 403)

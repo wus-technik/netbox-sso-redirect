@@ -1,12 +1,12 @@
 from netbox.plugins import PluginConfig
 
-__version__ = "0.3.0"
+__version__ = "1.0.0"
 
 
 class NetBoxSSORedirectConfig(PluginConfig):
     name = "netbox_sso_redirect"
     verbose_name = "SSO Redirect"
-    description = "Startet den SSO-Login automatisch; lokales Formular nur über /login/?local=1"
+    description = "Starts SSO automatically; local login form only via /login/?local=1"
     version = __version__
     author = "W&S Technik GmbH"
     base_url = "sso-redirect"

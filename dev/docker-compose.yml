@@ -14,7 +14,7 @@ services:
     volumes:
       - ./idp:/srv:ro
     ports:
-      - "9000:9000"
+      - "127.0.0.1:9000:9000"
   netbox:
     # netboxcommunity/netbox:v4.7.3
     image: netboxcommunity/netbox@sha256:22cf3c61fc367fb74a5cf6de018e9d7e10a7da8d09a695eab30740793040de08
@@ -26,4 +26,4 @@ services:
       - ..:/opt/plugin:ro
       - ./config/plugins.py:/etc/netbox/config/plugins.py:ro
     ports:
-      - "8000:8080"
+      - "127.0.0.1:8000:8080"

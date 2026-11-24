@@ -7,7 +7,7 @@ from users.models import User
 BRIDGE = "netbox_sso_redirect/bridge.html"
 
 
-@skipUnless(settings.BASE_PATH == "netbox/", "nur mit $TEST_BP")
+@skipUnless(settings.BASE_PATH == "netbox/", "only with $TEST_BP")
 class BasePathTest(TestCase):
     def test_bridge_with_prefix(self):
         r = self.client.get("/netbox/login/")
@@ -15,7 +15,7 @@ class BasePathTest(TestCase):
         self.assertContains(r, 'action="/netbox/oauth/begin/oidc/"')
         self.assertContains(r, "/netbox/static/netbox_sso_redirect/sso-redirect.js?v=")
         self.assertContains(r, 'href="/netbox/login/?local=1&amp;next=%2Fnetbox%2F"')
-        self.assertContains(r, 'name="next" value="/netbox/"')  # Rückfall LOGIN_REDIRECT_URL
+        self.assertContains(r, 'name="next" value="/netbox/"')  # LOGIN_REDIRECT_URL fallback
 
     def test_local_with_prefix(self):
         self.assertTemplateUsed(self.client.get("/netbox/login/?local=1"), "login.html")

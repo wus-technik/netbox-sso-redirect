@@ -1,18 +1,18 @@
-{# SSO-Brückenseite. Erbt wie NetBox' login.html direkt von base.html (Layout, Farbmodus, Meldungen). #}
+{# SSO bridge. Like NetBox's login.html, extends base.html for layout, color mode, and messages. #}
 {% extends 'base/base.html' %}
 {% load static %}
 {% load helpers %}
 
-{% block title %}Anmeldung{% endblock %}
+{% block title %}Sign in{% endblock %}
 
 {% block head %}
   <meta name="robots" content="noindex, nofollow">
   {% if idp_origin %}
-    {# Verbindung zum IdP schon aufbauen, während der SSO-Start läuft (spürbar im Mobilfunk). #}
+    {# Preconnect to the IdP during SSO startup to reduce latency on mobile networks. #}
     <link rel="preconnect" href="{{ idp_origin }}">
     <link rel="dns-prefetch" href="{{ idp_origin }}">
   {% endif %}
-  {# Version in der URL: nach einem Update darf der Browser kein altes Skript aus dem Cache nehmen. #}
+  {# Version the URL to prevent reuse of a stale cached script after an update. #}
   <script src="{% static_with_params 'netbox_sso_redirect/sso-redirect.js' v=plugin_version %}" defer></script>
 {% endblock %}
 
@@ -33,38 +33,38 @@
 
       <div class="card card-md">
         <div class="card-body">
-          <h2 class="text-center mb-4">Anmelden</h2>
+          <h2 class="text-center mb-4">Sign in</h2>
 
           {% if not autostart %}
             <p class="text-center text-secondary mb-4">
-              Die Anmeldung erfolgt über Single Sign-On.
+              Sign in using Single Sign-On.
             </p>
           {% endif %}
-          {# Sichtbar bis zum Seitenwechsel; das Skript blendet sie bei jedem Versuch ein. #}
+          {# Visible until navigation; the script shows this status for every attempt. #}
           <p id="sso-redirect-status" class="text-center text-secondary mb-4" role="status"{% if not autostart %} hidden{% endif %}>
             <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
-            Weiterleitung zur SSO-Anmeldung&nbsp;…
+            Redirecting to SSO sign-in&nbsp;…
           </p>
 
           <div id="sso-redirect-error" class="alert alert-danger" role="alert" tabindex="-1" hidden>
-            Die SSO-Anmeldung konnte nicht gestartet werden. Bitte erneut versuchen{% if local_url %}
-            oder die lokale Anmeldung nutzen{% endif %}.
+            Unable to start SSO sign-in. Please try again{% if local_url %}
+            or use local login{% endif %}.
           </div>
 
-          {# Bewusst ohne die Klasse sso-login-form: netbox.js (initSSOForms) soll das Formular nicht übernehmen. #}
+          {# Omit sso-login-form so netbox.js (initSSOForms) does not attach another handler. #}
           <form id="sso-redirect-form" method="post" action="{{ begin_url }}" data-autostart="{{ autostart|yesno:'true,false' }}">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ next_url }}">
             <button type="submit" class="btn btn-primary w-100">
               <i class="mdi mdi-login me-1" aria-hidden="true"></i>
-              Mit SSO anmelden
+              Sign in with SSO
             </button>
           </form>
         </div>
 
         {% if local_url %}
           <div class="card-footer text-center">
-            <a href="{{ local_url }}" class="link-secondary small">Lokale Anmeldung</a>
+            <a href="{{ local_url }}" class="link-secondary small">Local login</a>
           </div>
         {% endif %}
       </div>

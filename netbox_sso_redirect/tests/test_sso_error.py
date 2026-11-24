@@ -9,7 +9,7 @@ from netbox_sso_redirect.conf import get_idp_origin
 
 BRIDGE = "netbox_sso_redirect/bridge.html"
 IDP = {"authorization_endpoint": "https://idp.example/authorize"}
-ERROR_URL = "/login/?local=1"  # wie im Image: LOGIN_URL + "?local=1"
+ERROR_URL = "/login/?local=1"  # as in the image: LOGIN_URL + "?local=1"
 FAILED = "Single sign-on failed"
 UNABLE = "Unable to begin single sign-on"
 
@@ -21,11 +21,11 @@ def plugin_cfg(local_login):
 @override_settings(SOCIAL_AUTH_LOGIN_ERROR_URL=ERROR_URL)
 @mock.patch.object(OpenIdConnectAuth, "oidc_config", return_value=IDP)
 class SSOErrorFlowTest(TestCase):
-    """Abbruch bei authentik: Callback mit error=access_denied.
+    """Cancellation at authentik: callback with error=access_denied.
 
-    social-core wertet error vor dem state aus; der state ist hier nur der Vollständigkeit halber
-    gesetzt. Durchlaufen wird der echte Weg: complete-View, AuthCanceled,
-    SocialAuthExceptionMiddleware, SOCIAL_AUTH_LOGIN_ERROR_URL, Wiederherstellung von next.
+    social-core evaluates error before state; state is included here for completeness.
+    Exercise the real path: complete view, AuthCanceled,
+    SocialAuthExceptionMiddleware, SOCIAL_AUTH_LOGIN_ERROR_URL, and restoration of next.
     """
 
     def _cancelled_login(self, client, next_url="/dcim/devices/"):
@@ -64,7 +64,7 @@ class SSOErrorFlowTest(TestCase):
         self.assertTemplateUsed(page, BRIDGE)
         self.assertContains(page, 'data-autostart="false"')
         self.assertContains(page, 'name="next" value="/dcim/devices/"')
-        # Genau eine Meldung; NetBox' versteckter Starthinweis aus login.html kommt hier nicht vor.
+        # Exactly one message; NetBox's hidden startup hint from login.html is absent.
         self.assertContains(page, FAILED, count=1)
         self.assertNotContains(page, UNABLE)
 
@@ -94,6 +94,16 @@ class RestoreNextTest(TestCase):
         r = self.client.get("/login/")
         self.assertEqual(r.status_code, 200)
         self.assertTemplateUsed(r, BRIDGE)
+
+    def test_non_string_session_next_ignored(self):
+        for value in (None, 42, ["/ipam/"], {"url": "/ipam/"}):
+            with self.subTest(value=value):
+                self._session_next(self.client, value)
+                self.assertEqual(self.client.get("/login/?local=1").status_code, 200)
+
+    def test_https_session_next_cannot_downgrade(self):
+        self._session_next(self.client, "http://testserver/ipam/")
+        self.assertEqual(self.client.get("/login/?local=1", secure=True).status_code, 200)
 
     def test_htmx_not_redirected(self):
         self._session_next(self.client, "/ipam/")

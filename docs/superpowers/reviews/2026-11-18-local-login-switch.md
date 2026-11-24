@@ -1,47 +1,54 @@
-# Review: Sperre des lokalen Logins und Brückenseite im NetBox-Layout (2026-11-18)
+# Review: local login block and bridge using the NetBox layout (2026-11-18)
 
-**Umfang:** Version 0.2.0, Branch `feature/ITSYS-422-local-login-switch`, Bereich `4613e33..` (Einstellung
-`local_login`, Sperre von `POST /login/` und `POST /api/users/tokens/provision/`, Brückenseite auf
-Basis von `base/base.html`). Ref: ITSYS-422.
+**Scope:** Version 0.2.0, branch `feature/ITSYS-422-local-login-switch`, range
+`4613e33..`: `local_login`, blocking `POST /login/` and
+`POST /api/users/tokens/provision/`, and the bridge based on `base/base.html`.
+Ref: ITSYS-422.
 
-**Modell/Befehl:** Codex CLI 0.170.0 über den Agenten `codex-reviewer`,
-`codex exec --sandbox read-only --cd <repo> --model <modell> - < <prompt>` (Prompt per stdin).
-- Erstes Review von `4613e33..f198b38`: `gpt-6.1-sol`, Reasoning high. Gegengelesen gegen NetBox v4.7.3,
-  Django 6.1.2 und DRF von upstream.
-- Gezielte Nachprüfung von `f198b38..cd02b9f`: `gpt-6.1-terra`.
+**Model/command:** Codex CLI 0.170.0 via the `codex-reviewer` agent,
+`codex exec --sandbox read-only --cd <repo> --model <model> - < <prompt>` (stdin).
 
-Codex hatte kein Docker. Testergebnisse stammen aus dem gepinnten NetBox-4.7.3-Container: `$TEST` 64 OK,
-3 übersprungen; `$TEST_BP` 3 OK.
+- Initial review of `4613e33..f198b38`: `gpt-6.1-sol`, high reasoning.
+  Cross-checked against NetBox v4.7.3, Django 6.1.2, and upstream DRF.
+- Scoped re-review of `f198b38..cd02b9f`: `gpt-6.1-terra`.
 
-## Erstes Review (gpt-6.1-sol): CHANGES_REQUESTED
+Codex had no Docker access. Tests ran in the pinned NetBox 4.7.3 container:
+`$TEST` 64 OK, three skipped; `$TEST_BP` three OK.
 
-| # | Schwere | Ort | Befund | Urteil | Umgesetzt |
+## Initial review (gpt-6.1-sol): CHANGES_REQUESTED
+
+| # | Severity | Location | Finding | Verdict | Resolution |
 |---|---|---|---|---|---|
-| 1 | wichtig | `middleware.py` `_blocks_password_login` | Die Sperre verglich `request.path` mit `LOGIN_URL`. Bei einem WSGI-Mount (`SCRIPT_NAME`) oder einer `LOGIN_URL` mit Query erreichte ein POST mit gültigem Passwort trotzdem `LoginView`. In der Standardkonfiguration nicht erreichbar, weil NetBox `LOGIN_URL` fest setzt. | wahrscheinlich gültig | `cd02b9f`: Erkennung über `resolve(request.path_info).view_name` (`login`, `users-api:token_provision`); Test mit `SCRIPT_NAME` |
-| 2 | gering | `tests/test_local_login.py` `test_sso_begin_still_works` | Prüfte nur `!= 403` und hätte auch 400 oder 500 akzeptiert. | gültig | `cd02b9f`: OIDC-Discovery gemockt; geprüft werden 200 und die IdP-URL |
-| 3 | gering | `README.md` Punkte 6 und 8 | Punkt 6 widersprach der Sperre. „genau zwei Stellen“ war zu absolut: `/user/password/` prüft ebenfalls ein Passwort, setzt aber eine Sitzung voraus. | gültig | `cd02b9f`: Ausnahme in Punkt 6; Punkt 8 auf die anonymen Einstiegspunkte der Standardkonfiguration begrenzt; nicht abgedeckte Wege genannt |
+| 1 | important | `middleware.py` `_blocks_password_login` | The block compared `request.path` with `LOGIN_URL`. A WSGI mount (`SCRIPT_NAME`) or a query in `LOGIN_URL` allowed a valid-password POST to reach `LoginView`. Not reachable in standard NetBox configuration because NetBox fixes `LOGIN_URL`. | likely valid | `cd02b9f`: identify views through `resolve(request.path_info).view_name` (`login`, `users-api:token_provision`); test with `SCRIPT_NAME` |
+| 2 | low | `tests/test_local_login.py` `test_sso_begin_still_works` | Only asserted `!= 403`, which also accepted 400 or 500. | valid | `cd02b9f`: mock OIDC discovery and assert 200 plus the IdP URL |
+| 3 | low | README items 6 and 8 | Item 6 contradicted the block. "Exactly two places" was too absolute: `/user/password/` also checks a password but requires a session. | valid | `cd02b9f`: add the exception to item 6; limit item 8 to standard anonymous entry points and identify uncovered routes |
 
-Ohne Befund von Codex geprüft:
-- **Weitere Wege mit Passwort:** keine Basic-Auth in DRF, GraphQL nur mit Sitzung oder Token, kein Django-Admin.
-- **Methoden und Pfadvarianten:** HEAD, PUT, Method-Override, `/login` ohne Schrägstrich, doppelte Schrägstriche und Prozentkodierung führen nicht an der Sperre vorbei.
-- **Verhalten bei Fehlkonfiguration:** Die Sperre bleibt zu.
-- **XSS:** keine Lücke in Template und Skript.
+Checked without findings:
 
-## Gezielte Nachprüfung (gpt-6.1-terra)
+- **Other password paths:** no DRF Basic Auth, GraphQL requires a session or token, no Django admin.
+- **Methods and path variants:** HEAD, PUT, method override, `/login` without a trailing
+  slash, double slashes, and percent encoding do not bypass the block.
+- **Misconfiguration:** the block remains closed.
+- **XSS:** no vulnerability in the template or script.
 
-- Befunde 1–3: ADDRESSED.
-- **Neu, gering** (Codex: mittel). Ort: `middleware.py` `_view_name`. Befund: `resolve()` ignorierte ein von einer früheren Middleware gesetztes `request.urlconf`. Gilt nur, wenn eine Middleware vor dem Plugin eine eigene URL-Konfiguration setzt; NetBox 4.7.3 tut das nicht. Umgesetzt: Danach als Härtung übernommen, `resolve(..., urlconf=getattr(request, "urlconf", None))`.
-- **Ohne Befund:**
-  - Kontext der Vorlage (`config`, `settings`, `request` über die Context-Processors)
-  - Inline-Skripte und CSRF in `base.html`
-  - `static_with_params`
-  - das Formular ohne die Klasse `sso-login-form`
-  - die Fehlerbehandlung im Skript
-  - die Dev-Konfiguration
+## Scoped re-review (gpt-6.1-terra)
 
-## Manuelle Prüfung (Browser, lokaler Stack)
+- Findings 1–3: ADDRESSED.
+- **New, low** (Codex: moderate), `middleware.py` `_view_name`: `resolve()` ignored
+  `request.urlconf` set by earlier middleware. Applies only when middleware before
+  the plugin sets a custom URL configuration; NetBox 4.7.3 does not.
+  Subsequently hardened with `resolve(..., urlconf=getattr(request, "urlconf", None))`.
+- No findings for template context (`config`, `settings`, `request` through context
+  processors), inline scripts and CSRF in `base.html`, `static_with_params`, omitting
+  the `sso-login-form` class, script error handling, or development configuration.
 
-- **Gesperrt** (`SSO_LOCAL_LOGIN=false`), `/login/?local=1`: Karte im NetBox-Layout, kein Autostart, kein Link „Lokale Anmeldung“.
-- **IdP angehalten**, Klick auf „Mit SSO anmelden“: Der Fehlerhinweis erscheint, der Knopf wird wieder aktiv.
-- **Freigegeben:** Spinner „Weiterleitung zur SSO-Anmeldung …“ und Link „Lokale Anmeldung“. Keine Konsolenfehler.
-- **Dabei gefunden:** Das Skript war ohne Version eingebunden. Chrome nahm deshalb die gecachte Version 0.1.0 und startete trotz `data-autostart="false"`. Nach einem Update wäre das auch im Betrieb passiert und hätte nach einem SSO-Fehler eine Schleife erzeugt. Behoben in `cd02b9f` mit `?v=<plugin_version>` in der Skript-URL; ein Test prüft das.
+## Manual check (browser, local stack)
+
+- **Blocked** (`SSO_LOCAL_LOGIN=false`), `/login/?local=1`: card in the NetBox layout,
+  no auto-start or "Local login" link.
+- **IdP stopped**, click "Sign in with SSO": error shown, button re-enabled.
+- **Allowed:** "Redirecting to SSO sign-in …" spinner and "Local login" link; no console errors.
+- **Additional finding:** the script URL lacked a version. Chrome reused cached 0.1.0
+  and auto-started despite `data-autostart="false"`. In production, an update could
+  therefore cause a loop after an SSO error. Fixed in `cd02b9f` with
+  `?v=<plugin_version>` in the script URL and a regression test.

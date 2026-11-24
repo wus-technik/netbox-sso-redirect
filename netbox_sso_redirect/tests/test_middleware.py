@@ -17,8 +17,8 @@ class SSORedirectMiddlewareTest(TestCase):
     def setUpTestData(cls):
         cls.user = User.objects.create_user(username="user", password="user-pass-123")
         cls.admin = User.objects.create_superuser(username="admin", password="admin-pass-123")
-        # v1-Token: Die Testumgebung setzt kein API_TOKEN_PEPPERS, v2-Tokens lassen sich
-        # ohne Pepper nicht speichern. Header-Format liefert NetBox selbst.
+        # Use a v1 token: the test environment has no API_TOKEN_PEPPERS, and v2 tokens
+        # cannot be saved without a pepper. Use NetBox's own header format.
         cls.token = Token(user=cls.admin, version=TokenVersionChoices.V1)
         cls.token.save()
         cls.token_header = cls.token.get_auth_header_prefix() + cls.token.token
@@ -85,8 +85,8 @@ class SSORedirectMiddlewareTest(TestCase):
         self.assertEqual(r.status_code, 302)
         hop = self.client.get(r["Location"], headers={"HX-Request": "true"})
         self.assertEqual(hop["HX-Redirect"], r["Location"])
-        # Geparst vergleichen: Djangos redirect_to_login kodiert mit urlencode(safe="/"),
-        # die Schrägstriche in next bleiben also unkodiert.
+        # Compare parsed values: Django redirect_to_login uses urlencode(safe="/"),
+        # so the slashes in next remain unencoded.
         self.assertEqual(parse_qs(urlsplit(hop["HX-Redirect"]).query)["next"], ["/dcim/devices/"])
         self.assertTemplateUsed(self.client.get(hop["HX-Redirect"]), BRIDGE)
 
@@ -137,7 +137,7 @@ class SSORedirectMiddlewareTest(TestCase):
         ):
             with self.subTest(cfg=cfg), override_settings(PLUGINS_CONFIG={"netbox_sso_redirect": cfg}):
                 with self.assertLogs("netbox_sso_redirect", "WARNING"):
-                    r = Client().get("/login/")  # neuer Client = neuer Handler = neue Middleware-Kette
+                    r = Client().get("/login/")  # new client = new handler = new middleware chain
                 self.assertEqual(r.status_code, 200)
                 self.assertTemplateUsed(r, "login.html")
                 self.assertTemplateNotUsed(r, BRIDGE)

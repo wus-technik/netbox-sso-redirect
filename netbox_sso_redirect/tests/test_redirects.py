@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 from django.conf import settings
 from django.test import RequestFactory, SimpleTestCase
 
@@ -58,3 +60,13 @@ class SafeNextTest(SimpleTestCase):
 
     def test_repeated_next_last_checked(self):
         self.assertEqual(safe_next(_request("next=/ipam/&next=//evil")), FALLBACK)
+
+    def test_adversarial_redirect_targets(self):
+        for value in (
+            "javascript:alert(1)", "data:text/html,<script>alert(1)</script>",
+            "https:///evil.example/", "///evil.example/", "\\\\evil.example/",
+            "https://testserver@evil.example/", "https://testserver.evil.example/",
+            "https://evil.example@testserver/", "\x00//evil.example/",
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(safe_next(_request(urlencode({"next": value}))), FALLBACK)
